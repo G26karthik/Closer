@@ -87,3 +87,55 @@ async def test_research_topic_rejection_prevents_done():
         with pytest.raises(OutputQualityError):
             await research_topic(ctx, "Submit report", "2026-07-05", "goal-1")
     assert not done_marked, "subtask must NOT be marked done when evaluation rejects"
+
+
+@pytest.mark.asyncio
+async def test_produce_document_evaluates_before_calling_docs_api():
+    ctx = MagicMock()
+    ctx.state = {"subtasks": [{"id": "produce_document_0", "type": "produce_document", "title": "x", "needsHuman": False}]}
+    mock_resp = AsyncMock()
+    mock_resp.text = "Document body content."
+    calls = []
+    async def track_update(goal_id, sid, data):
+        calls.append(("update", data.get("status")))
+    async def track_eval(goal, deadline, stype, summary):
+        calls.append(("evaluate", stype))
+    def track_create_document(access_token, title, content):
+        calls.append(("create_document", None))
+        return "doc-123"
+    async def track_log(*a, **kw):
+        calls.append(("log", None))
+    with patch("agent.nodes._gemini.aio.models.generate_content", return_value=mock_resp), \
+         patch("agent.nodes.fs.update_subtask", side_effect=track_update), \
+         patch("agent.nodes._evaluate_output", side_effect=track_eval), \
+         patch("agent.nodes.create_document", side_effect=track_create_document), \
+         patch("agent.nodes.fs.log_activity", side_effect=track_log):
+        await produce_document(ctx, "Submit report", "2026-07-05", "goal-1", "fake-token")
+    assert calls[0] == ("update", "running")
+    eval_idx = calls.index(("evaluate", "produce_document"))
+    create_idx = calls.index(("create_document", None))
+    done_idx = next(i for i, c in enumerate(calls) if c == ("update", "done"))
+    assert eval_idx < create_idx < done_idx, f"expected evaluate < create_document < done; got {calls}"
+
+
+@pytest.mark.asyncio
+async def test_produce_document_rejection_prevents_docs_api_call():
+    from agent.errors import OutputQualityError
+    ctx = MagicMock()
+    ctx.state = {"subtasks": [{"id": "produce_document_0", "type": "produce_document", "title": "x", "needsHuman": False}]}
+    mock_resp = AsyncMock()
+    mock_resp.text = "Weak content."
+    docs_api_called = []
+    async def reject(goal, deadline, stype, summary):
+        raise OutputQualityError("content insufficient")
+    def track_create_document(access_token, title, content):
+        docs_api_called.append(True)
+        return "doc-should-not-happen"
+    with patch("agent.nodes._gemini.aio.models.generate_content", return_value=mock_resp), \
+         patch("agent.nodes.fs.update_subtask", new_callable=AsyncMock), \
+         patch("agent.nodes._evaluate_output", side_effect=reject), \
+         patch("agent.nodes.create_document", side_effect=track_create_document), \
+         patch("agent.nodes.fs.log_activity", new_callable=AsyncMock):
+        with pytest.raises(OutputQualityError):
+            await produce_document(ctx, "Submit report", "2026-07-05", "goal-1", "fake-token")
+    assert not docs_api_called, "create_document (external Google Docs API call) must NEVER be invoked when evaluation rejects — would create an orphaned real Google Doc"
