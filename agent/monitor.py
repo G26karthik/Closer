@@ -18,7 +18,7 @@ from tools.time_utils import parse_deadline
 log = get_logger(__name__)
 
 _gemini = genai.Client(api_key=cfg.GEMINI_API_KEY)
-_GEMINI_MODEL = "gemini-2.0-flash"
+_GEMINI_MODEL = "gemini-3.5-flash"
 
 # A goal is "at risk" if less than this many hours remain before its deadline
 # and it hasn't reached a terminal status yet.

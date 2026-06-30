@@ -29,10 +29,10 @@ log = get_logger(__name__)
 
 _gemini = genai.Client(api_key=cfg.GEMINI_API_KEY)
 
-# NOTE: gemini-2.0-flash is the stable production model for ADK 2.x as of the
-# initial deployment. Update this constant (not scattered call sites) if the
-# project migrates to a newer model.
-_GEMINI_MODEL = "gemini-2.0-flash"
+# gemini-2.0-flash was retired (0 free-tier quota as of July 2026); current
+# production flash model is gemini-3.5-flash. Update this constant (not
+# scattered call sites) if the project migrates to a newer model.
+_GEMINI_MODEL = "gemini-3.5-flash"
 
 _SUBTASK_TYPES = {"communicate", "schedule", "research", "produce_document", "decision"}
 
@@ -78,6 +78,51 @@ Return ONLY JSON: {{"verdict": "accept" or "reject", "reason": "<one sentence>"}
         return
     if verdict.get("verdict") == "reject":
         raise OutputQualityError(verdict.get("reason", "output rejected by evaluator"))
+
+
+async def _draft_email_content(goal: str, deadline: str) -> tuple[str, str]:
+    """Use Gemini to draft a subject/body tailored to the actual goal.
+
+    @param goal: Plain-text goal description.
+    @param deadline: ISO 8601 deadline string.
+    @returns: (subject, body) tuple.
+    """
+    fallback = (
+        f"Re: {goal[:60]}",
+        f"Hi,\n\n{goal}\n\nDeadline: {deadline}\n\nBest regards,\nThe Team",
+    )
+    # LLMs are unreliable at date arithmetic — compute the weekday ourselves
+    # rather than let Gemini guess and hallucinate (e.g. calling July 5, 2026
+    # a Friday when it's a Sunday).
+    try:
+        deadline_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
+        deadline_context = f"{deadline} (this is a {deadline_dt.strftime('%A')})"
+    except ValueError:
+        deadline_context = deadline
+    prompt = f"""Draft an email that accomplishes this goal, accounting for the deadline.
+
+Goal: {goal}
+Deadline: {deadline_context}
+
+Do not state or imply any other day of the week for the deadline or for dates
+you mention relative to it — use only the weekday given above.
+
+Return ONLY JSON: {{"subject": "<email subject>", "body": "<email body>"}}"""
+
+    try:
+        response = await _gemini.aio.models.generate_content(
+            model=_GEMINI_MODEL,
+            contents=prompt,
+        )
+        raw = (response.text or "").strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict) and parsed.get("subject") and parsed.get("body"):
+            return parsed["subject"], parsed["body"]
+    except Exception as exc:
+        log.warning("draft_email_content.gemini_fallback", error=str(exc))
+    return fallback
 
 
 # Block this many hours before the deadline for the calendar prep event.
@@ -239,12 +284,7 @@ async def draft_email(
     log.info("draft_email.start", goal_id=goal_id, attempt=attempt)
     await fs.update_subtask(goal_id, subtask["id"], {"status": "running", "retryCount": attempt})
 
-    subject = f"Submission by {deadline}: {goal}"
-    body = (
-        f"Hi,\n\nPlease find our project submission attached.\n\n"
-        f"Submission deadline: {deadline}\n\n"
-        "Best regards,\nThe Team"
-    )
+    subject, body = await _draft_email_content(goal, deadline)
 
     await _evaluate_output(goal, deadline, "communicate", f"Subject: {subject}\nBody: {body}")
 

@@ -10,6 +10,12 @@ service cloud.firestore {
           get(/databases/$(database)/documents/goals/$(goalId)).data.userId == request.auth.uid;
         allow write: if false;
       }
+
+      match /activity/{activityId} {
+        allow read: if request.auth != null &&
+          get(/databases/$(database)/documents/goals/$(goalId)).data.userId == request.auth.uid;
+        allow write: if false;
+      }
     }
   }
 }
