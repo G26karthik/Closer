@@ -16,6 +16,7 @@ from config import cfg
 # Collection name constants — update here if the schema changes.
 _GOALS_COLLECTION = "goals"
 _SUBTASKS_COLLECTION = "subtasks"
+_ACTIVITY_COLLECTION = "activity"
 
 _db: firestore.AsyncClient | None = None
 
@@ -111,4 +112,28 @@ async def store_hitl_interrupt(goal_id: str, interrupt_id: str, payload: dict[st
         "hitlInterruptId": interrupt_id,
         "hitlPayload": payload,
         "status": "awaiting_human",
+    })
+
+
+async def log_activity(goal_id: str, actor: str, decision: str, reason: str) -> None:
+    """Append a structured agent-decision event for the frontend Activity Feed.
+
+    Mirrors the structlog call already made at each node's call site — same
+    data, two sinks (structured logs for ops, Firestore for the live UI).
+
+    @param goal_id: Parent goal document ID.
+    @param actor: Which agent made the decision (e.g. "PlannerAgent", "SchedulerAgent").
+    @param decision: Short machine-readable decision tag (e.g. "plan_complete").
+    @param reason: Human-readable one-line explanation shown in the UI.
+    """
+    db = _get_db()
+    ref = (
+        db.collection(_GOALS_COLLECTION).document(goal_id)
+        .collection(_ACTIVITY_COLLECTION)
+    )
+    await ref.add({
+        "actor": actor,
+        "decision": decision,
+        "reason": reason,
+        "ts": firestore.SERVER_TIMESTAMP,
     })
