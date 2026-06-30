@@ -311,7 +311,7 @@ async def create_calendar_event(
 
 
 # ---------------------------------------------------------------------------
-# Node 3.5: Research topic (Gemini + Google Search grounding)
+# Node: Research topic via Gemini + Google Search grounding
 # ---------------------------------------------------------------------------
 
 async def research_topic(

@@ -31,3 +31,50 @@ async def test_research_topic_skips_when_not_planned():
     with patch("agent.nodes.fs.update_subtask", new_callable=AsyncMock) as mock_update:
         await research_topic(ctx, "Submit report", "2026-07-05", "goal-1")
     mock_update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_research_topic_evaluates_before_marking_done():
+    ctx = MagicMock()
+    ctx.state = {"subtasks": [{"id": "research_0", "type": "research", "title": "x", "needsHuman": False}]}
+    mock_resp = AsyncMock()
+    mock_resp.text = "Relevant findings about the goal."
+    calls = []
+    async def track_update(goal_id, sid, data):
+        calls.append(("update", data.get("status")))
+    async def track_eval(goal, deadline, stype, summary):
+        calls.append(("evaluate", stype))
+    async def track_log(*a, **kw):
+        calls.append(("log", None))
+    with patch("agent.nodes._gemini.aio.models.generate_content", return_value=mock_resp), \
+         patch("agent.nodes.fs.update_subtask", side_effect=track_update), \
+         patch("agent.nodes._evaluate_output", side_effect=track_eval), \
+         patch("agent.nodes.fs.log_activity", side_effect=track_log):
+        await research_topic(ctx, "Submit report", "2026-07-05", "goal-1")
+    # running update must precede evaluate, evaluate must precede done update
+    assert calls[0] == ("update", "running")
+    eval_idx = calls.index(("evaluate", "research"))
+    done_idx = next(i for i, c in enumerate(calls) if c == ("update", "done"))
+    assert eval_idx < done_idx, f"evaluate must run before marking done; got {calls}"
+
+
+@pytest.mark.asyncio
+async def test_research_topic_rejection_prevents_done():
+    from agent.errors import OutputQualityError
+    ctx = MagicMock()
+    ctx.state = {"subtasks": [{"id": "research_0", "type": "research", "title": "x", "needsHuman": False}]}
+    mock_resp = AsyncMock()
+    mock_resp.text = "Weak findings."
+    done_marked = []
+    async def track_update(goal_id, sid, data):
+        if data.get("status") == "done":
+            done_marked.append(True)
+    async def reject(goal, deadline, stype, summary):
+        raise OutputQualityError("findings insufficient")
+    with patch("agent.nodes._gemini.aio.models.generate_content", return_value=mock_resp), \
+         patch("agent.nodes.fs.update_subtask", side_effect=track_update), \
+         patch("agent.nodes._evaluate_output", side_effect=reject), \
+         patch("agent.nodes.fs.log_activity", new_callable=AsyncMock):
+        with pytest.raises(OutputQualityError):
+            await research_topic(ctx, "Submit report", "2026-07-05", "goal-1")
+    assert not done_marked, "subtask must NOT be marked done when evaluation rejects"
