@@ -13,6 +13,7 @@ from google import genai
 from config import cfg
 from logger import get_logger
 from tools import firestore_client as fs
+from tools.time_utils import parse_deadline
 
 log = get_logger(__name__)
 
@@ -32,9 +33,8 @@ def _is_at_risk(goal: dict) -> bool:
     """
     if goal.get("status") in ("done", "error"):
         return False
-    try:
-        deadline = datetime.fromisoformat(goal["deadline"].replace("Z", "+00:00"))
-    except (KeyError, ValueError, TypeError, AttributeError):
+    deadline = parse_deadline(goal.get("deadline"))
+    if deadline is None:
         return False
     return deadline - datetime.now(timezone.utc) < timedelta(hours=_RISK_WINDOW_HOURS)
 

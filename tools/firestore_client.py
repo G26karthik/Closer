@@ -8,11 +8,13 @@ Collections:
   goals/{goalId}/subtasks/{id}  — subtask documents
   goals/{goalId}/activity/{id}  — agent-decision event log (Activity Feed)
 """
+from datetime import datetime, timezone
 from typing import Any
 
 from google.cloud import firestore
 
 from config import cfg
+from tools.time_utils import parse_deadline
 
 # Collection name constants — update here if the schema changes.
 _GOALS_COLLECTION = "goals"
@@ -143,11 +145,18 @@ async def log_activity(goal_id: str, actor: str, decision: str, reason: str) -> 
 async def list_active_goals_for_monitor() -> list[dict[str, Any]]:
     """Return all goal docs (with their IDs) still in-flight, for the proactive monitor sweep.
 
-    @returns: List of dicts, each containing all goal fields plus `id`.
+    Sorted by ascending time-to-deadline so the caller processes the most
+    time-critical goals first. Goals with an unparseable or missing deadline
+    sort last rather than raising.
+
+    @returns: List of dicts, each containing all goal fields plus `id`, sorted by priority.
     """
     db = _get_db()
     query = db.collection(_GOALS_COLLECTION).where(
         filter=firestore.FieldFilter("status", "in", ["executing", "awaiting_human"])
     )
     docs = [doc async for doc in query.stream()]
-    return [{**doc.to_dict(), "id": doc.id} for doc in docs]
+    goals = [{**doc.to_dict(), "id": doc.id} for doc in docs]
+    _NO_DEADLINE = datetime.max.replace(tzinfo=timezone.utc)
+    goals.sort(key=lambda g: parse_deadline(g.get("deadline")) or _NO_DEADLINE)
+    return goals
