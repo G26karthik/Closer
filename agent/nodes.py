@@ -55,6 +55,41 @@ def _find_subtask(subtasks: list[dict[str, Any]], subtask_type: str) -> dict[str
     return None
 
 
+_MAX_SUBTASKS = 6
+
+
+def _build_subtasks_from_parsed(parsed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert Gemini's parsed planning JSON into the validated subtask list.
+
+    Drops items whose `type` isn't in _SUBTASK_TYPES, assigns per-type
+    incrementing ids, marks needsHuman only for decision-type, allows at most
+    one decision subtask, and caps the total at _MAX_SUBTASKS. Returns a
+    possibly-empty list (caller falls back to a default pair when empty).
+
+    @param parsed: The list Gemini returned (each item ideally {"type", "title"}).
+    @returns: Validated subtask dicts: {id, type, title, needsHuman}.
+    """
+    built: list[dict[str, Any]] = []
+    type_counts: dict[str, int] = {}
+    for item in parsed:
+        if len(built) >= _MAX_SUBTASKS:
+            break
+        item_type = item.get("type")
+        if item_type not in _SUBTASK_TYPES:
+            continue
+        if item_type == "decision" and type_counts.get("decision"):
+            continue  # at most one decision subtask
+        idx = type_counts.get(item_type, 0)
+        type_counts[item_type] = idx + 1
+        built.append({
+            "id": f"{item_type}_{idx}",
+            "type": item_type,
+            "title": item.get("title", item_type),
+            "needsHuman": item_type == "decision",
+        })
+    return built
+
+
 async def plan_goal(
     ctx: Context,
     goal: str,
@@ -109,20 +144,7 @@ Do not invent other type values."""
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         parsed: list[dict[str, Any]] = json.loads(raw)
-        built: list[dict[str, Any]] = []
-        type_counts: dict[str, int] = {}
-        for item in parsed:
-            item_type = item.get("type")
-            if item_type not in _SUBTASK_TYPES:
-                continue
-            idx = type_counts.get(item_type, 0)
-            type_counts[item_type] = idx + 1
-            built.append({
-                "id": f"{item_type}_{idx}",
-                "type": item_type,
-                "title": item.get("title", item_type),
-                "needsHuman": item_type == "decision",
-            })
+        built = _build_subtasks_from_parsed(parsed)
         if built:
             subtasks = built
     except Exception as exc:
