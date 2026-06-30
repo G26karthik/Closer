@@ -138,3 +138,16 @@ async def log_activity(goal_id: str, actor: str, decision: str, reason: str) -> 
         "reason": reason,
         "ts": firestore.SERVER_TIMESTAMP,
     })
+
+
+async def list_active_goals_for_monitor() -> list[dict[str, Any]]:
+    """Return all goal docs (with their IDs) still in-flight, for the proactive monitor sweep.
+
+    @returns: List of dicts, each containing all goal fields plus `id`.
+    """
+    db = _get_db()
+    query = db.collection(_GOALS_COLLECTION).where(
+        filter=firestore.FieldFilter("status", "in", ["executing", "awaiting_human"])
+    )
+    docs = [doc async for doc in query.stream()]
+    return [{**doc.to_dict(), "id": doc.id} for doc in docs]

@@ -12,11 +12,12 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 from google.genai import types as genai_types
 
+from agent.monitor import check_and_intervene
 from agent.workflow import closer_workflow
 from config import cfg
 from logger import configure_logging, get_logger
 from tools import firestore_client as fs
-from tools.firestore_client import create_goal
+from tools.firestore_client import create_goal, list_active_goals_for_monitor
 from google.adk.workflow.utils._workflow_hitl_utils import (
     create_request_input_response,
     get_request_input_interrupt_ids,
@@ -125,6 +126,23 @@ async def resume_goal(request: Request, goal_id: str, body: ResumeRequest, backg
         session_id=pending["session_id"], resume_content=resume_content,
     )
     return {"status": "resuming"}
+
+
+@app.post("/internal/tick")
+async def monitor_tick() -> dict[str, int]:
+    """Cloud Scheduler target. Auth is enforced at the Cloud Run IAM layer
+    (roles/run.invoker + OIDC token, service not allow-unauthenticated) — no
+    manual token verification needed here per /search-first findings.
+    """
+    goals = await list_active_goals_for_monitor()
+    checked = 0
+    for goal in goals:
+        try:
+            await check_and_intervene(goal["id"], goal)
+            checked += 1
+        except Exception as exc:
+            log.error("monitor.tick_failed", goal_id=goal["id"], error=str(exc))
+    return {"checked": checked}
 
 
 async def _run_workflow(goal_id: str, goal: str, deadline: str, user_id: str, user_email: str, access_token: str) -> None:
