@@ -62,7 +62,7 @@ Customize the title fields to be specific to: "{goal}". Return only the JSON arr
 
     try:
         response = await _gemini.aio.models.generate_content(model=_GEMINI_MODEL, contents=prompt)
-        raw = response.text.strip()
+        raw = (response.text or "").strip()
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         parsed: list[dict[str, Any]] = json.loads(raw)
@@ -150,7 +150,7 @@ async def request_human_decision(ctx: Context, goal_id: str) -> AsyncGenerator[A
         "goal_id": goal_id,
     }
     await fs.store_hitl_interrupt(goal_id, interrupt_id, payload)
-    yield create_request_input_event(RequestInput(
+    yield create_request_input_event(RequestInput(  # type: ignore[call-arg]
         interrupt_id=interrupt_id,
         message="Which project description do you want submitted?",
         payload=payload,
