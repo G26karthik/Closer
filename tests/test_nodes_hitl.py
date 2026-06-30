@@ -63,8 +63,8 @@ async def test_request_human_decision_resume_records_choice():
     mock_goal.assert_awaited_once_with("goal-1", {"status": "done", "hitlInterruptId": None})
     # subtask marked done against the dynamic id, result mentions the choice
     assert mock_sub.await_count == 1
-    args = mock_sub.await_args
-    assert args.args[0] == "goal-1"
-    assert args.args[1] == "decision_0"
-    assert args.args[2]["status"] == "done"
-    assert "B" in args.args[2]["result"]
+    call = mock_sub.await_args_list[0]
+    assert call.args[0] == "goal-1"
+    assert call.args[1] == "decision_0"
+    assert call.args[2]["status"] == "done"
+    assert "B" in call.args[2]["result"]

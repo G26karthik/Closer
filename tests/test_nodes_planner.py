@@ -7,6 +7,7 @@ def test_find_subtask_returns_match():
         {"id": "decision_1", "type": "decision", "title": "y", "needsHuman": True},
     ]
     result = _find_subtask(subtasks, "communicate")
+    assert result is not None
     assert result["id"] == "communicate_0"
 
 

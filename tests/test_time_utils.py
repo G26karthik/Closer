@@ -10,12 +10,14 @@ from tools.time_utils import parse_deadline
 
 def test_parse_deadline_with_z_suffix_is_aware():
     dt = parse_deadline("2026-06-30T23:59:00Z")
+    assert dt is not None
     assert dt.tzinfo is not None
     assert dt == datetime(2026, 6, 30, 23, 59, 0, tzinfo=timezone.utc)
 
 
 def test_parse_deadline_with_explicit_offset_is_aware():
     dt = parse_deadline("2026-06-30T23:59:00+00:00")
+    assert dt is not None
     assert dt.tzinfo is not None
 
 
@@ -25,6 +27,7 @@ def test_parse_deadline_without_offset_is_normalized_to_utc():
     elsewhere in the codebase. They must now be assumed UTC.
     """
     dt = parse_deadline("2026-07-05T10:00:00")
+    assert dt is not None
     assert dt.tzinfo is not None
     assert dt == datetime(2026, 7, 5, 10, 0, 0, tzinfo=timezone.utc)
 

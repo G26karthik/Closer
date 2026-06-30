@@ -156,7 +156,7 @@ async def list_active_goals_for_monitor() -> list[dict[str, Any]]:
         filter=firestore.FieldFilter("status", "in", ["executing", "awaiting_human"])
     )
     docs = [doc async for doc in query.stream()]
-    goals = [{**doc.to_dict(), "id": doc.id} for doc in docs]
+    goals = [{**(doc.to_dict() or {}), "id": doc.id} for doc in docs]
     _NO_DEADLINE = datetime.max.replace(tzinfo=timezone.utc)
     goals.sort(key=lambda g: parse_deadline(g.get("deadline")) or _NO_DEADLINE)
     return goals
