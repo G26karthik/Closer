@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install --no-cache-dir -r requirements.txt ruff
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Type check (pyright)
+        # NOTE: pyright is not in requirements.txt because it is a dev-only tool.
+        # Install it here rather than shipping it in the production image.
+        run: |
+          pip install pyright
+          pyright --pythonversion 3.12 .
+
+      - name: Run tests
+        # TODO(owner): Add pytest and real tests. This step fails loudly if no
+        # tests exist, which is intentional — it surfaces the gap in CI.
+        run: |
+          pip install pytest
+          pytest --tb=short

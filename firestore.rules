@@ -1,0 +1,15 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /goals/{goalId} {
+      allow read: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow write: if false; // backend Admin SDK only
+
+      match /subtasks/{subtaskId} {
+        allow read: if request.auth != null &&
+          get(/databases/$(database)/documents/goals/$(goalId)).data.userId == request.auth.uid;
+        allow write: if false;
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+# Python cache and env
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+
+# Development
+.venv/
+venv/
+*.egg-info/
+
+# Secrets
+*.key
+credentials.json

@@ -1,0 +1,25 @@
+# Secrets — never bake these into the image.
+.env
+.env.*
+credentials.json
+*.key
+
+# Python bytecode and virtualenvs.
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Git history and CI config — not needed at runtime.
+.git/
+.github/
+.ruff_cache/
+
+# Build artefacts.
+dist/
+build/
+
+# OS noise.
+.DS_Store
