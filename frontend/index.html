@@ -551,8 +551,8 @@ function resetToInput() {
 }
 
 // Firestore
-const TYPE_ICON={email:'mail',calendar:'calendar_today',decision:'help',validate:'verified',misc:'settings'};
-const TYPE_COLOR={email:'#b8c3ff',calendar:'#4cd7f6',decision:'#d0bcff',validate:'#34d399',misc:'#c4c5d9'};
+const TYPE_ICON={communicate:'mail',schedule:'calendar_today',research:'search',produce_document:'description',decision:'help'};
+const TYPE_COLOR={communicate:'#b8c3ff',schedule:'#4cd7f6',research:'#34d399',produce_document:'#fbbf24',decision:'#d0bcff'};
 function renderTask(id,data) {
   let el=document.getElementById('task-'+id);
   if (!el) { el=document.createElement('div'); el.id='task-'+id; document.getElementById('task-list').appendChild(el); }
@@ -569,18 +569,21 @@ function renderTask(id,data) {
       <span class="material-symbols-outlined${spin?' anim-spin':''}" style="font-size:18px;color:${color}">${icon}</span>
     </div>
     <div style="flex:1;min-width:0">
-      <p style="font-size:0.875rem;font-weight:500;color:var(--on-surface)">${data.title}</p>
-      ${sub?`<p style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub}</p>`:''}
+      <p class="ti-title" style="font-size:0.875rem;font-weight:500;color:var(--on-surface)"></p>
+      ${sub?`<p class="ti-sub" style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></p>`:''}
     </div>
     <span class="badge b-${st}">${st.replace('_',' ')}</span>`;
-  if (st==='done'&&data.type==='email')    addBanner('mail',          'Gmail draft saved',      data.result||'');
-  if (st==='done'&&data.type==='calendar') addBanner('calendar_today','Calendar event created', data.result||'');
+  el.querySelector('.ti-title').textContent = data.title || '';
+  if (sub) el.querySelector('.ti-sub').textContent = sub;
+  if (st==='done'&&data.type==='communicate') addBanner('mail',          'Gmail draft saved',      data.result||'');
+  if (st==='done'&&data.type==='schedule')    addBanner('calendar_today','Calendar event created', data.result||'');
 }
 function addBanner(icon,title,desc) {
   const bid='banner-'+icon; if (document.getElementById(bid)) return;
   const el=document.createElement('div'); el.id=bid;
   el.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2)';
-  el.innerHTML=`<span class="material-symbols-outlined" style="font-size:16px;color:#34d399">${icon}</span><div><p style="font-size:0.82rem;font-weight:500;color:var(--on-surface)">${title}</p>${desc?`<p style="font-size:0.72rem;color:var(--on-surface-variant)">${desc}</p>`:''}</div>`;
+  el.innerHTML=`<span class="material-symbols-outlined" style="font-size:16px;color:#34d399">${icon}</span><div><p style="font-size:0.82rem;font-weight:500;color:var(--on-surface)">${title}</p>${desc?`<p class="bn-desc" style="font-size:0.72rem;color:var(--on-surface-variant)"></p>`:''}</div>`;
+  if (desc) el.querySelector('.bn-desc').textContent = desc;
   document.getElementById('result-banners').appendChild(el);
 }
 function renderActivity(id,data) {
@@ -642,7 +645,9 @@ function populateDone() {
     const ps=item.querySelectorAll('p');
     const div=document.createElement('div'); div.className='tl-item';
     div.style.cssText='position:relative;padding-left:28px';
-    div.innerHTML=`<div style="position:absolute;left:0;top:2px;width:20px;height:20px;border-radius:50%;background:rgba(52,211,153,0.14);display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:11px;color:#34d399">check</span></div><p style="font-size:0.875rem;font-weight:500;color:var(--on-surface)">${ps[0]?.textContent||''}</p>${ps[1]?`<p style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:2px">${ps[1].textContent}</p>`:''}`;
+    div.innerHTML=`<div style="position:absolute;left:0;top:2px;width:20px;height:20px;border-radius:50%;background:rgba(52,211,153,0.14);display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:11px;color:#34d399">check</span></div><p class="tl-title" style="font-size:0.875rem;font-weight:500;color:var(--on-surface)"></p>${ps[1]?`<p class="tl-sub" style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:2px"></p>`:''}`;
+    div.querySelector('.tl-title').textContent = ps[0]?.textContent || '';
+    if (ps[1]) div.querySelector('.tl-sub').textContent = ps[1].textContent;
     tl.appendChild(div);
   });
   document.querySelectorAll('#result-banners > div').forEach(item=>af.appendChild(item.cloneNode(true)));
