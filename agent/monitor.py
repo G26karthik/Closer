@@ -34,7 +34,7 @@ def _is_at_risk(goal: dict) -> bool:
         return False
     try:
         deadline = datetime.fromisoformat(goal["deadline"].replace("Z", "+00:00"))
-    except (KeyError, ValueError):
+    except (KeyError, ValueError, TypeError, AttributeError):
         return False
     return deadline - datetime.now(timezone.utc) < timedelta(hours=_RISK_WINDOW_HOURS)
 
