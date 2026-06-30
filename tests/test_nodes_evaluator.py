@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from agent.errors import OutputQualityError
-from agent.nodes import _evaluate_output, research_topic
+from agent.nodes import _evaluate_output, produce_document, research_topic
 
 
 @pytest.mark.asyncio
@@ -30,6 +30,15 @@ async def test_research_topic_skips_when_not_planned():
     ctx.state = {"subtasks": [{"id": "communicate_0", "type": "communicate", "title": "x", "needsHuman": False}]}
     with patch("agent.nodes.fs.update_subtask", new_callable=AsyncMock) as mock_update:
         await research_topic(ctx, "Submit report", "2026-07-05", "goal-1")
+    mock_update.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_produce_document_skips_when_not_planned():
+    ctx = MagicMock()
+    ctx.state = {"subtasks": [{"id": "communicate_0", "type": "communicate", "title": "x", "needsHuman": False}]}
+    with patch("agent.nodes.fs.update_subtask", new_callable=AsyncMock) as mock_update:
+        await produce_document(ctx, "Submit report", "2026-07-05", "goal-1", "fake-token")
     mock_update.assert_not_called()
 
 

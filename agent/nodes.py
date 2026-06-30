@@ -22,6 +22,7 @@ from config import cfg
 from logger import get_logger
 from tools import firestore_client as fs
 from tools.calendar_client import create_event, find_free_slot
+from tools.docs_client import create_document
 from tools.gmail_client import create_draft
 
 log = get_logger(__name__)
@@ -357,6 +358,48 @@ async def research_topic(
     })
     await fs.log_activity(goal_id, "ResearchAgent", "research_complete", summary[:200])
     log.info("research_topic.done", goal_id=goal_id)
+
+
+# ---------------------------------------------------------------------------
+# Node: Produce document via Gemini + Google Docs API
+# ---------------------------------------------------------------------------
+
+async def produce_document(
+    ctx: Context,
+    goal: str,
+    deadline: str,
+    goal_id: str,
+    access_token: str,
+) -> None:
+    """Generate a real Google Doc deliverable instead of a metadata banner.
+
+    Self-skips if the planner didn't emit a "produce_document" subtask.
+
+    @param ctx: ADK node context.
+    @param goal: Plain-text goal description.
+    @param deadline: ISO 8601 deadline string.
+    @param goal_id: Firestore document ID for subtask updates.
+    @param access_token: OAuth token with documents scope.
+    @throws: OutputQualityError if self-review rejects the draft content (triggers retry).
+    """
+    subtask = _find_subtask(ctx.state["subtasks"], "produce_document")
+    if subtask is None:
+        log.info("produce_document.skip_not_planned", goal_id=goal_id)
+        return
+
+    await fs.update_subtask(goal_id, subtask["id"], {"status": "running"})
+    prompt = f"Write the body content for a document supporting this goal.\nGoal: {goal}\nDeadline: {deadline}"
+    response = await _gemini.aio.models.generate_content(model=_GEMINI_MODEL, contents=prompt)
+    content = (response.text or "").strip()
+    await _evaluate_output(goal, deadline, "produce_document", content)
+
+    document_id = create_document(access_token, title=f"{goal[:60]} — {deadline}", content=content)
+    now = datetime.now(timezone.utc).isoformat()
+    await fs.update_subtask(goal_id, subtask["id"], {
+        "status": "done", "result": f"doc:{document_id}", "executedAt": now,
+    })
+    await fs.log_activity(goal_id, "DocumentAgent", "document_complete", f"Created doc {document_id}")
+    log.info("produce_document.done", goal_id=goal_id, document_id=document_id)
 
 
 # ---------------------------------------------------------------------------

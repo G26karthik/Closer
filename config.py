@@ -39,6 +39,9 @@ class _Config:
     FIRESTORE_PROJECT_ID: str = _require("FIRESTORE_PROJECT_ID")
 
     # Optional — empty string is a valid default for frontend injection.
+    # NOTE: the frontend OAuth consent screen (gapi.auth2.init) must request the
+    # https://www.googleapis.com/auth/documents scope for produce_document
+    # (agent/nodes.py, tools/docs_client.py) to succeed — see .env.example.
     GOOGLE_CLIENT_ID: str = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.environ.get("GOOGLE_CLIENT_SECRET", "")
     FIREBASE_API_KEY: str = os.environ.get("FIREBASE_API_KEY", "")
