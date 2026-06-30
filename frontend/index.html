@@ -148,7 +148,7 @@
         <span class="material-symbols-outlined nl-icon">play_circle</span><span class="nl-label">Execution</span>
       </a>
       <a class="nav-link" id="nl-logs" onclick="navTo('logs')">
-        <span class="material-symbols-outlined nl-icon">terminal</span><span class="nl-label">Agent Logs</span>
+        <span class="material-symbols-outlined nl-icon">terminal</span><span class="nl-label">Activity Feed</span>
       </a>
       <a class="nav-link" id="nl-apps" onclick="navTo('apps')">
         <span class="material-symbols-outlined nl-icon">apps</span><span class="nl-label">Connected Apps</span>
@@ -328,6 +328,14 @@
         Token expired — sign out and sign back in to reconnect
       </div>
     </div>
+    <!-- VIEW: Activity Feed -->
+    <div id="view-activity" style="display:none;flex-direction:column;padding:32px;gap:16px;max-width:720px">
+      <div style="margin-bottom:4px">
+        <h2 style="font-size:1.1rem;font-weight:700;color:var(--on-surface)">Activity Feed</h2>
+        <p style="font-size:0.82rem;color:var(--on-surface-variant);margin-top:4px">Live agent decisions and reasoning for this goal</p>
+      </div>
+      <div id="activity-feed" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
   </main>
 </div>
 
@@ -375,7 +383,7 @@ const auth = firebase.auth();
 const API_BASE = window._API_BASE || "";
 
 let currentUser = null, accessToken = null, currentGoalId = null;
-let unsubGoal = null, unsubTasks = null, hitlGoalId = null, hitlChoice = null;
+let unsubGoal = null, unsubTasks = null, unsubActivity = null, hitlGoalId = null, hitlChoice = null;
 let _goalStatus = null;
 
 function showScreen(name) {
@@ -383,11 +391,11 @@ function showScreen(name) {
   document.getElementById('screen-workspace').style.display = name==='workspace' ? 'block' : 'none';
 }
 function showView(name) {
-  ['input','tasks','done','apps'].forEach(v => {
+  ['input','tasks','done','apps','activity'].forEach(v => {
     const el = document.getElementById('view-'+v);
     if (el) { el.style.display = v===name ? 'flex' : 'none'; if (v===name) el.style.flexDirection='column'; }
   });
-  document.getElementById('main-title').textContent = {input:'New Goal',tasks:'Execution',done:'Completed',apps:'Connected Apps'}[name]||'Closer';
+  document.getElementById('main-title').textContent = {input:'New Goal',tasks:'Execution',done:'Completed',apps:'Connected Apps',activity:'Activity Feed'}[name]||'Closer';
   if (name === 'apps') {
     const tok = !!accessToken;
     const warn = document.getElementById('apps-token-warning');
@@ -431,6 +439,7 @@ function signOut() {
   accessToken = ''; currentUser = null;
   if (unsubGoal) { unsubGoal(); unsubGoal = null; }
   if (unsubTasks) { unsubTasks(); unsubTasks = null; }
+  if (unsubActivity) { unsubActivity(); unsubActivity = null; }
   if (_pastUnsub) { _pastUnsub(); _pastUnsub = null; }
   currentGoalId = null;
   auth.signOut().then(() => showScreen('landing'));
@@ -447,7 +456,7 @@ function navTo(dest) {
     else showView('input');
   } else if (dest === 'logs') {
     setSidebarActive('nl-logs');
-    if (currentGoalId) showView('tasks');
+    if (currentGoalId) showView('activity');
     else showView('input');
   } else if (dest === 'apps') {
     setSidebarActive('nl-apps');
@@ -528,12 +537,13 @@ async function submitGoal() {
   }
 }
 function resetToInput() {
-  if(unsubGoal)unsubGoal(); if(unsubTasks)unsubTasks();
-  unsubGoal=unsubTasks=currentGoalId=null;
+  if(unsubGoal)unsubGoal(); if(unsubTasks)unsubTasks(); if(unsubActivity)unsubActivity();
+  unsubGoal=unsubTasks=unsubActivity=currentGoalId=null;
   document.getElementById('task-list').innerHTML='';
   document.getElementById('result-banners').innerHTML='';
   document.getElementById('done-timeline').innerHTML='';
   document.getElementById('done-artifacts').innerHTML='';
+  document.getElementById('activity-feed').innerHTML='';
   window._dl=null; cal.sel=null; renderCal();
   const btn=document.getElementById('exec-btn');
   btn.disabled=false; btn.innerHTML='<span class="material-symbols-outlined" style="font-size:20px">bolt</span>Execute';
@@ -573,6 +583,19 @@ function addBanner(icon,title,desc) {
   el.innerHTML=`<span class="material-symbols-outlined" style="font-size:16px;color:#34d399">${icon}</span><div><p style="font-size:0.82rem;font-weight:500;color:var(--on-surface)">${title}</p>${desc?`<p style="font-size:0.72rem;color:var(--on-surface-variant)">${desc}</p>`:''}</div>`;
   document.getElementById('result-banners').appendChild(el);
 }
+function renderActivity(id,data) {
+  let el=document.getElementById('act-'+id);
+  if (!el) { el=document.createElement('div'); el.id='act-'+id; document.getElementById('activity-feed').appendChild(el); }
+  const ts=data.ts?.toDate ? data.ts.toDate() : (data.ts ? new Date(data.ts) : null);
+  const timeStr=ts ? ts.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '';
+  el.style.cssText='display:flex;flex-direction:column;gap:4px;padding:12px 16px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);backdrop-filter:blur(20px)';
+  el.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <p style="font-size:0.85rem;font-weight:700;color:var(--on-surface)">${data.actor||'agent'}</p>
+      <span style="font-size:0.68rem;color:var(--on-surface-variant);font-family:'JetBrains Mono',monospace">${timeStr}</span>
+    </div>
+    <p style="font-size:0.8rem;color:var(--on-surface-variant);line-height:1.5">${data.reason||''}</p>`;
+}
 function subscribeGoal(goalId) {
   _goalStatus = null;
   const dot=document.getElementById('running-dot');
@@ -603,6 +626,9 @@ function subscribeGoal(goalId) {
   unsubTasks=db.collection("goals").doc(goalId).collection("subtasks").onSnapshot(snap=>{
     snap.docChanges().forEach(ch=>{ if(ch.type==='added'||ch.type==='modified') renderTask(ch.doc.id,ch.doc.data()); });
     if (_goalStatus==='done'||_goalStatus==='completed') populateDone();
+  });
+  unsubActivity=db.collection("goals").doc(goalId).collection("activity").orderBy("ts","asc").onSnapshot(snap=>{
+    snap.docChanges().forEach(ch=>{ if(ch.type==='added') renderActivity(ch.doc.id,ch.doc.data()); });
   });
 }
 function populateDone() {
@@ -703,9 +729,10 @@ function loadPastGoals() {
 
 function openPastGoal(goalId, data) {
   // Unsubscribe previous if any
-  if (unsubGoal) unsubGoal(); if (unsubTasks) unsubTasks();
+  if (unsubGoal) unsubGoal(); if (unsubTasks) unsubTasks(); if (unsubActivity) unsubActivity();
   document.getElementById('task-list').innerHTML = '';
   document.getElementById('result-banners').innerHTML = '';
+  document.getElementById('activity-feed').innerHTML = '';
   currentGoalId = goalId;
   document.getElementById('running-text').textContent = data.text || '';
   showView('tasks'); setSidebarActive('nl-execution');
