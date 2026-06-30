@@ -1,0 +1,25 @@
+# Secrets
+.env
+.env.*
+credentials.json
+*.key
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Git history
+.git/
+.github/
+.ruff_cache/
+
+# Build artefacts
+dist/
+build/
+
+# OS noise
+.DS_Store
