@@ -32,16 +32,7 @@ _gemini = genai.Client(api_key=cfg.GEMINI_API_KEY)
 # project migrates to a newer model.
 _GEMINI_MODEL = "gemini-2.0-flash"
 
-# Fixed subtask schema — Gemini only customises the `title` field.
-# Structured as a list of dicts so the shape is self-documenting and
-# eliminates three parallel lists that had to stay in sync.
-_SUBTASK_TEMPLATES: list[dict[str, Any]] = [
-    {"id": "draft_email",             "type": "email",    "needsHuman": False},
-    {"id": "create_calendar_event",   "type": "calendar", "needsHuman": False},
-    {"id": "validate_draft",          "type": "validate", "needsHuman": False},
-    {"id": "request_human_decision",  "type": "decision", "needsHuman": True},
-    {"id": "final_prep",              "type": "misc",     "needsHuman": False},
-]
+_SUBTASK_TYPES = {"communicate", "schedule", "research", "produce_document", "decision"}
 
 # Block this many hours before the deadline for the calendar prep event.
 _PREP_WINDOW_HOURS = 2
