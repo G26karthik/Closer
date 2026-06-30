@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Closer — Execute your deadlines</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #131314;
+      --surface: #1c1c1f;
+      --surface-low: #0e0e0f;
+      --primary: #b8c3ff;
+      --primary-container: #2e5bff;
+      --on-primary: #002388;
+      --secondary: #d0bcff;
+      --tertiary: #4cd7f6;
+      --on-surface: #e5e2e3;
+      --on-surface-variant: #c4c5d9;
+      --error: #ffb4ab;
+      --border: rgba(255,255,255,0.06);
+      --glass: rgba(14,14,15,0.5);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--on-surface); font-family: 'Inter', system-ui, sans-serif; min-height: 100vh; }
+    .material-symbols-outlined { font-family: 'Material Symbols Outlined'; font-style: normal; line-height: 1; vertical-align: middle; user-select: none; }
+    .glass { background: var(--glass); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--border); }
+    .gradient-text {
+      background: linear-gradient(135deg, #e5e2e3 0%, var(--primary) 50%, var(--secondary) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    }
+    .blob { position:absolute; border-radius:50%; filter:blur(80px); pointer-events:none; animation:floatBlob 10s ease-in-out infinite; }
+    @keyframes floatBlob { 0%,100%{transform:translate(0,0) scale(1)} 33%{transform:translate(24px,-18px) scale(1.04)} 66%{transform:translate(-18px,10px) scale(0.96)} }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.35} }
+    .anim-pulse { animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .anim-spin { animation: spin 0.9s linear infinite; display:inline-block; }
+    #cal-grid { display:grid; grid-template-columns:repeat(7,36px); gap:2px; justify-content:center; }
+    .cal-hdr { width:36px; height:28px; display:flex; align-items:center; justify-content:center; font-size:0.7rem; color:var(--on-surface-variant); }
+    .cal-day { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.8rem; cursor:pointer; background:transparent; color:var(--on-surface); border:none; transition:background 0.12s; }
+    .cal-day:hover { background:rgba(184,195,255,0.12); }
+    .cal-day.today { color:var(--primary); font-weight:700; }
+    .cal-day.selected { background:var(--primary); color:var(--on-primary); font-weight:700; }
+    .badge { display:inline-flex; align-items:center; padding:2px 8px; border-radius:99px; font-size:0.65rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; white-space:nowrap; }
+    .b-pending   { background:rgba(255,255,255,0.06); color:var(--on-surface-variant); }
+    .b-running   { background:rgba(251,191,36,0.14); color:#fbbf24; }
+    .b-retrying  { background:rgba(251,191,36,0.14); color:#fbbf24; }
+    .b-done      { background:rgba(52,211,153,0.14); color:#34d399; }
+    .b-error     { background:rgba(255,180,171,0.14); color:var(--error); }
+    .b-needs_human { background:rgba(184,195,255,0.14); color:var(--primary); }
+    .ti-running, .ti-retrying { border-color:rgba(251,191,36,0.4) !important; }
+    .ti-done     { border-color:rgba(52,211,153,0.4) !important; }
+    .ti-error    { border-color:rgba(255,180,171,0.4) !important; }
+    .ti-needs_human { border-color:rgba(184,195,255,0.4) !important; }
+    .nav-link { display:flex; align-items:center; gap:12px; padding:8px 12px; border-radius:10px; cursor:pointer; transition:background 0.12s; }
+    .nav-link:hover { background:rgba(255,255,255,0.04); }
+    .nav-link.active { background:rgba(184,195,255,0.1); }
+    .nav-link.active .nl-icon, .nav-link.active .nl-label { color:var(--primary) !important; }
+    .nl-icon { font-size:18px !important; color:var(--on-surface-variant); }
+    .nl-label { font-size:0.875rem; color:var(--on-surface-variant); }
+    .glow-focus:focus-within { box-shadow:0 0 0 2px rgba(184,195,255,0.25),0 0 18px rgba(184,195,255,0.08); }
+    .sug-pill { padding:4px 12px; border-radius:99px; border:1px solid rgba(184,195,255,0.2); background:rgba(184,195,255,0.08); color:var(--primary); font-size:0.75rem; font-weight:500; cursor:pointer; transition:background 0.12s; }
+    .sug-pill:hover { background:rgba(184,195,255,0.15); }
+    .hitl-opt { border:1px solid var(--border); border-radius:12px; padding:16px; cursor:pointer; transition:border-color 0.15s,background 0.15s; background:rgba(255,255,255,0.02); }
+    .hitl-opt:hover { border-color:rgba(184,195,255,0.3); }
+    .hitl-opt.chosen { border-color:var(--primary) !important; background:rgba(184,195,255,0.05); }
+    .tl-item { position:relative; padding-left:28px; }
+    .tl-item::before { content:''; position:absolute; left:9px; top:24px; width:2px; height:calc(100% + 12px); background:var(--border); }
+    .tl-item:last-child::before { display:none; }
+    ::-webkit-scrollbar { width:4px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.1); border-radius:2px; }
+    kbd { display:inline-block; padding:1px 6px; border-radius:4px; background:rgba(255,255,255,0.07); font-family:'JetBrains Mono',monospace; font-size:0.7rem; color:var(--on-surface-variant); }
+  </style>
+</head>
+<body>
+
+<!-- LANDING -->
+<div id="screen-landing" style="display:flex;flex-direction:column;min-height:100vh;position:relative;overflow:hidden">
+  <div class="blob" style="width:560px;height:560px;background:rgba(184,195,255,0.07);top:-80px;right:-80px"></div>
+  <div class="blob" style="width:380px;height:380px;background:rgba(208,188,255,0.06);bottom:80px;left:-60px;animation-delay:-4s"></div>
+  <div class="blob" style="width:260px;height:260px;background:rgba(76,215,246,0.05);top:45%;left:45%;animation-delay:-7s"></div>
+
+  <nav style="position:fixed;top:0;left:0;right:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:16px 28px;border-bottom:1px solid var(--border);background:rgba(19,19,20,0.85);backdrop-filter:blur(14px)">
+    <span style="font-size:1.2rem;font-weight:800;letter-spacing:-0.03em;color:var(--on-surface)">Closer</span>
+    <button onclick="signIn()" style="display:inline-flex;align-items:center;gap:8px;background:var(--primary);color:var(--on-primary);border:none;border-radius:10px;padding:8px 18px;font-size:0.875rem;font-weight:600;cursor:pointer">
+      <svg width="16" height="16" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+      Sign in
+    </button>
+  </nav>
+
+  <section style="display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;text-align:center;padding:120px 24px 64px">
+    <div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:99px;background:rgba(184,195,255,0.1);border:1px solid rgba(184,195,255,0.15);font-size:0.75rem;font-weight:600;color:var(--primary);margin-bottom:24px">
+      <span class="material-symbols-outlined" style="font-size:14px">bolt</span>
+      Powered by Google ADK 2.3 + Gemini Flash
+    </div>
+    <h1 style="font-size:clamp(2.8rem,7vw,5.5rem);font-weight:900;letter-spacing:-0.04em;line-height:1.04;margin-bottom:20px" class="gradient-text">Your deadlines,<br/>executed.</h1>
+    <p style="font-size:1.05rem;max-width:480px;color:var(--on-surface-variant);line-height:1.65;margin-bottom:36px">Describe what you need done. Closer drafts emails, creates calendar events, and handles decisions — autonomously.</p>
+    <button onclick="signIn()" style="display:inline-flex;align-items:center;gap:12px;background:#fff;color:#111;border:none;border-radius:12px;padding:14px 28px;font-size:0.95rem;font-weight:600;cursor:pointer;box-shadow:0 4px 24px rgba(0,0,0,0.3)">
+      <svg width="20" height="20" viewBox="0 0 18 18"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg>
+      Sign in with Google
+    </button>
+  </section>
+
+  <section style="max-width:960px;margin:0 auto;padding:0 24px 80px;display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px">
+    <div class="glass" style="border-radius:20px;padding:24px">
+      <span class="material-symbols-outlined" style="font-size:24px;color:var(--primary);display:block;margin-bottom:14px">hub</span>
+      <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:8px">Autonomous Execution</h3>
+      <p style="font-size:0.82rem;color:var(--on-surface-variant);line-height:1.6">ADK Workflow handles retries, branching, and parallel tasks without you lifting a finger.</p>
+      <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px">
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--on-surface-variant)"><span>Email draft</span><span style="color:#34d399">Done</span></div>
+        <div style="height:3px;border-radius:99px;background:var(--border)"><div style="height:3px;border-radius:99px;width:100%;background:var(--primary)"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:var(--on-surface-variant)"><span>Calendar event</span><span style="color:#fbbf24">Running</span></div>
+        <div style="height:3px;border-radius:99px;background:var(--border)"><div class="anim-pulse" style="height:3px;border-radius:99px;width:58%;background:var(--secondary)"></div></div>
+      </div>
+    </div>
+    <div class="glass" style="border-radius:20px;padding:24px">
+      <span class="material-symbols-outlined" style="font-size:24px;color:var(--secondary);display:block;margin-bottom:14px">manage_accounts</span>
+      <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:8px">Human-in-the-Loop</h3>
+      <p style="font-size:0.82rem;color:var(--on-surface-variant);line-height:1.6">Pauses at critical decisions. You choose; the agent resumes and completes execution instantly.</p>
+    </div>
+    <div class="glass" style="border-radius:20px;padding:24px">
+      <span class="material-symbols-outlined" style="font-size:24px;color:var(--tertiary);display:block;margin-bottom:14px">speed</span>
+      <h3 style="font-size:0.95rem;font-weight:700;margin-bottom:8px">Real-Time Updates</h3>
+      <p style="font-size:0.82rem;color:var(--on-surface-variant);line-height:1.6">Firestore streams every task change to your browser as it happens — no polling, no refresh.</p>
+    </div>
+  </section>
+</div>
+
+<!-- WORKSPACE -->
+<div id="screen-workspace" style="display:none;min-height:100vh">
+
+  <aside style="position:fixed;top:0;left:0;height:100%;width:256px;display:flex;flex-direction:column;background:var(--surface-low);border-right:1px solid var(--border);z-index:20">
+    <div style="padding:20px;border-bottom:1px solid var(--border)">
+      <span style="font-size:1.1rem;font-weight:800;letter-spacing:-0.03em;color:var(--on-surface)">Closer</span>
+    </div>
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border)">
+      <button onclick="resetToInput()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 16px;border-radius:10px;background:var(--primary);color:var(--on-primary);border:none;font-size:0.85rem;font-weight:600;cursor:pointer">
+        <span class="material-symbols-outlined" style="font-size:16px">add</span>New Goal
+      </button>
+    </div>
+    <nav style="flex:1;padding:12px;display:flex;flex-direction:column;gap:2px;overflow-y:auto">
+      <a class="nav-link" id="nl-execution" onclick="navTo('execution')">
+        <span class="material-symbols-outlined nl-icon">play_circle</span><span class="nl-label">Execution</span>
+      </a>
+      <a class="nav-link" id="nl-logs" onclick="navTo('logs')">
+        <span class="material-symbols-outlined nl-icon">terminal</span><span class="nl-label">Agent Logs</span>
+      </a>
+      <a class="nav-link" id="nl-apps" onclick="navTo('apps')">
+        <span class="material-symbols-outlined nl-icon">apps</span><span class="nl-label">Connected Apps</span>
+      </a>
+      <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
+        <p style="font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant);padding:0 12px;margin-bottom:6px">RECENT</p>
+        <div id="past-goals-list" style="display:flex;flex-direction:column;gap:2px"></div>
+      </div>
+    </nav>
+    <div style="padding:14px 16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <img id="sb-avatar" src="" alt="" style="width:32px;height:32px;border-radius:50%;object-fit:cover;display:none" />
+      <div style="flex:1;min-width:0">
+        <p id="sb-name" style="font-size:0.82rem;font-weight:500;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></p>
+        <p id="sb-email" style="font-size:0.72rem;color:var(--on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></p>
+      </div>
+      <button onclick="signOut()" title="Sign out" style="background:none;border:none;cursor:pointer;padding:4px;border-radius:6px;color:var(--on-surface-variant);display:flex;align-items:center;transition:color 0.12s" onmouseenter="this.style.color='#ffb4ab'" onmouseleave="this.style.color='var(--on-surface-variant)'">
+        <span class="material-symbols-outlined" style="font-size:18px">logout</span>
+      </button>
+    </div>
+  </aside>
+
+  <main style="margin-left:256px;display:flex;flex-direction:column;min-height:100vh">
+    <header style="position:sticky;top:0;z-index:10;display:flex;align-items:center;justify-content:space-between;padding:14px 32px;border-bottom:1px solid var(--border);background:rgba(19,19,20,0.92);backdrop-filter:blur(14px)">
+      <h1 id="main-title" style="font-size:1rem;font-weight:600;color:var(--on-surface)">New Goal</h1>
+      <div style="display:flex;align-items:center;gap:10px">
+        <img id="hdr-avatar" src="" alt="" style="width:30px;height:30px;border-radius:50%;display:none" />
+        <span id="hdr-name" style="font-size:0.82rem;color:var(--on-surface-variant)"></span>
+      </div>
+    </header>
+
+    <!-- VIEW: Input -->
+    <div id="view-input" style="display:flex;flex-direction:column;gap:20px;padding:32px;max-width:720px">
+      <div class="glass glow-focus" style="border-radius:16px;padding:22px">
+        <label style="display:block;font-size:0.8rem;font-weight:500;color:var(--on-surface-variant);margin-bottom:10px">What do you need to get done?</label>
+        <textarea id="goal-input" rows="3" placeholder="Submit the Vibe2Ship hackathon by June 30, 11:59 PM"
+          style="width:100%;background:transparent;border:none;outline:none;color:var(--on-surface);font-family:'Inter',sans-serif;font-size:0.95rem;resize:none;line-height:1.6"></textarea>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px">
+          <button onclick="setSug('Draft investor update email for Q2 results')" class="sug-pill">Draft investor email</button>
+          <button onclick="setSug('Schedule team standup for next Monday at 10 AM')" class="sug-pill">Schedule standup</button>
+          <button onclick="setSug('Send project proposal to client by end of week')" class="sug-pill">Send proposal</button>
+        </div>
+      </div>
+
+      <div class="glass" style="border-radius:16px;padding:22px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+          <label style="font-size:0.8rem;font-weight:500;color:var(--on-surface-variant)">Deadline</label>
+          <button id="fmt-btn" onclick="toggleFmt()" style="padding:3px 10px;border-radius:6px;border:none;background:rgba(184,195,255,0.1);color:var(--primary);font-family:'JetBrains Mono',monospace;font-size:0.72rem;font-weight:600;cursor:pointer">12H</button>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <button onclick="prevMonth()" style="padding:4px;border-radius:8px;border:none;background:transparent;color:var(--on-surface-variant);cursor:pointer;display:flex;align-items:center">
+            <span class="material-symbols-outlined" style="font-size:22px">chevron_left</span>
+          </button>
+          <span id="cal-label" style="font-size:0.875rem;font-weight:600;color:var(--on-surface)"></span>
+          <button onclick="nextMonth()" style="padding:4px;border-radius:8px;border:none;background:transparent;color:var(--on-surface-variant);cursor:pointer;display:flex;align-items:center">
+            <span class="material-symbols-outlined" style="font-size:22px">chevron_right</span>
+          </button>
+        </div>
+        <div id="cal-grid"></div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+          <span class="material-symbols-outlined" style="font-size:18px;color:var(--on-surface-variant)">schedule</span>
+          <input id="t-hour" type="number" min="1" max="12" value="11"
+            style="width:52px;text-align:center;padding:6px 4px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--on-surface);font-family:'JetBrains Mono',monospace;font-size:0.85rem;outline:none"
+            oninput="updateDL()" />
+          <span style="color:var(--on-surface-variant);font-weight:700">:</span>
+          <input id="t-min" type="number" min="0" max="59" value="59"
+            style="width:52px;text-align:center;padding:6px 4px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);color:var(--on-surface);font-family:'JetBrains Mono',monospace;font-size:0.85rem;outline:none"
+            oninput="updateDL()" />
+          <button id="ampm-btn" onclick="toggleAmPm()" style="padding:6px 12px;border-radius:8px;border:none;background:rgba(184,195,255,0.1);color:var(--primary);font-size:0.8rem;font-weight:600;cursor:pointer">PM</button>
+          <span id="dl-display" style="font-size:0.75rem;color:var(--on-surface-variant);margin-left:auto">Select a date</span>
+        </div>
+      </div>
+
+      <div class="glass" style="border-radius:16px;padding:20px">
+        <label style="display:block;font-size:0.8rem;font-weight:500;color:var(--on-surface-variant);margin-bottom:12px">Execution Mode</label>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;background:rgba(184,195,255,0.05);border:1px solid rgba(184,195,255,0.18)">
+          <div style="width:36px;height:36px;border-radius:10px;background:var(--primary-container);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <span class="material-symbols-outlined" style="font-size:18px;color:#fff">auto_awesome</span>
+          </div>
+          <div style="flex:1">
+            <p style="font-size:0.875rem;font-weight:600;color:var(--on-surface)">Full Autonomous</p>
+            <p style="font-size:0.75rem;color:var(--on-surface-variant)">ADK manages retries and pauses for human decisions</p>
+          </div>
+          <span class="material-symbols-outlined" style="font-size:20px;color:var(--primary)">radio_button_checked</span>
+        </div>
+      </div>
+
+      <button id="exec-btn" onclick="submitGoal()" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:14px;border:none;background:var(--primary);color:var(--on-primary);font-size:1rem;font-weight:700;cursor:pointer">
+        <span class="material-symbols-outlined" style="font-size:20px">bolt</span>Execute
+      </button>
+    </div>
+
+    <!-- VIEW: Tasks -->
+    <div id="view-tasks" style="display:none;flex-direction:column;flex:1">
+      <div style="padding:16px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+        <div class="anim-pulse" style="width:8px;height:8px;border-radius:50%;background:#34d399;flex-shrink:0"></div>
+        <p style="font-size:0.85rem;color:var(--on-surface-variant)">Running: <span id="running-text" style="color:var(--on-surface);font-weight:500"></span></p>
+      </div>
+      <div style="display:flex;gap:24px;padding:28px 32px;flex:1">
+        <div style="flex:1;display:flex;flex-direction:column;gap:16px">
+          <span style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant)">TASK GRAPH</span>
+          <div id="task-list" style="display:flex;flex-direction:column;gap:10px"></div>
+          <div id="result-banners" style="display:flex;flex-direction:column;gap:8px;margin-top:4px"></div>
+        </div>
+        <div style="width:200px;flex-shrink:0;display:flex;flex-direction:column;gap:12px">
+          <div class="glass" style="border-radius:14px;padding:16px">
+            <p style="font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant);margin-bottom:6px">STATUS</p>
+            <p id="goal-status" style="font-size:0.875rem;font-weight:600;color:var(--primary)">Executing</p>
+          </div>
+          <div class="glass" style="border-radius:14px;padding:16px">
+            <p style="font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant);margin-bottom:6px">RUNTIME</p>
+            <p style="font-size:0.82rem;color:var(--on-surface)">ADK 2.3 Workflow</p>
+            <p style="font-size:0.72rem;color:var(--on-surface-variant);margin-top:3px">Gemini Flash</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEW: Done -->
+    <div id="view-done" style="display:none;flex-direction:column;padding:32px;gap:24px">
+      <div style="display:flex;align-items:center;gap:16px">
+        <div style="width:48px;height:48px;border-radius:50%;background:rgba(52,211,153,0.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <span class="material-symbols-outlined" style="font-size:24px;color:#34d399">check_circle</span>
+        </div>
+        <div>
+          <h2 style="font-size:1.2rem;font-weight:700;color:var(--on-surface)">Goal Completed</h2>
+          <p style="font-size:0.82rem;color:var(--on-surface-variant)">All tasks executed successfully</p>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 220px;gap:16px">
+        <div class="glass" style="border-radius:16px;padding:22px">
+          <p style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant);margin-bottom:16px">EXECUTION TIMELINE</p>
+          <div id="done-timeline" style="display:flex;flex-direction:column;gap:14px"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="glass" style="border-radius:16px;padding:18px">
+            <p style="font-size:0.72rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant);margin-bottom:12px">GENERATED ARTIFACTS</p>
+            <div id="done-artifacts" style="display:flex;flex-direction:column;gap:10px"></div>
+          </div>
+          <div class="glass" style="border-radius:16px;padding:18px;text-align:center">
+            <p style="font-size:2.2rem;font-weight:900;color:var(--primary)">88%</p>
+            <p style="font-size:0.72rem;color:var(--on-surface-variant);margin-top:4px">Faster than manual</p>
+          </div>
+        </div>
+      </div>
+      <button onclick="resetToInput()" style="align-self:flex-start;display:inline-flex;align-items:center;gap:6px;padding:10px 18px;border-radius:10px;border:none;background:rgba(184,195,255,0.1);color:var(--primary);font-size:0.85rem;font-weight:600;cursor:pointer">
+        <span class="material-symbols-outlined" style="font-size:16px">add</span>New Goal
+      </button>
+    </div>
+    <!-- VIEW: Connected Apps -->
+    <div id="view-apps" style="display:none;padding:32px;gap:20px;max-width:560px">
+      <div style="margin-bottom:4px">
+        <h2 style="font-size:1.1rem;font-weight:700;color:var(--on-surface)">Connected Apps</h2>
+        <p style="font-size:0.82rem;color:var(--on-surface-variant);margin-top:4px">Google services authorised via OAuth2 during sign-in</p>
+      </div>
+      <div class="glass" style="border-radius:14px;padding:20px;display:flex;align-items:center;gap:14px;margin-top:8px">
+        <div style="width:38px;height:38px;border-radius:9px;background:rgba(234,67,53,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <span class="material-symbols-outlined" style="font-size:20px;color:#ea4335">mail</span>
+        </div>
+        <div style="flex:1">
+          <p style="font-size:0.88rem;font-weight:600;color:var(--on-surface)">Gmail</p>
+          <p style="font-size:0.75rem;color:var(--on-surface-variant)">gmail.compose — creates drafts in your Drafts folder</p>
+        </div>
+        <span id="apps-gmail-status" style="font-size:0.72rem;font-weight:600">—</span>
+      </div>
+      <div class="glass" style="border-radius:14px;padding:20px;display:flex;align-items:center;gap:14px;margin-top:8px">
+        <div style="width:38px;height:38px;border-radius:9px;background:rgba(66,133,244,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <span class="material-symbols-outlined" style="font-size:20px;color:#4285f4">calendar_month</span>
+        </div>
+        <div style="flex:1">
+          <p style="font-size:0.88rem;font-weight:600;color:var(--on-surface)">Google Calendar</p>
+          <p style="font-size:0.75rem;color:var(--on-surface-variant)">calendar.events — blocks 2h prep window before your deadline</p>
+        </div>
+        <span id="apps-cal-status" style="font-size:0.72rem;font-weight:600">—</span>
+      </div>
+      <div id="apps-token-warning" style="display:none;font-size:0.78rem;color:#ffb4ab;padding:12px 14px;border-radius:10px;background:rgba(255,180,171,0.08);border:1px solid rgba(255,180,171,0.18);margin-top:8px">
+        Token expired — sign out and sign back in to reconnect
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- HITL OVERLAY -->
+<div id="hitl-overlay" style="display:none;position:fixed;inset:0;z-index:50;align-items:center;justify-content:center;background:rgba(19,19,20,0.65);backdrop-filter:blur(8px)">
+  <div class="glass" style="border-radius:20px;padding:24px;width:100%;max-width:620px;margin:0 16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <div style="width:40px;height:40px;border-radius:50%;background:rgba(184,195,255,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <span class="material-symbols-outlined" style="color:var(--primary);font-size:20px">pause_circle</span>
+      </div>
+      <div>
+        <h2 style="font-size:1rem;font-weight:700;color:var(--on-surface)">Awaiting Human Input</h2>
+        <p style="font-size:0.78rem;color:var(--on-surface-variant)">Agent paused — your decision is required to continue</p>
+      </div>
+    </div>
+    <p id="hitl-q" style="font-size:0.875rem;color:var(--on-surface-variant);margin-bottom:14px">Choose how to proceed:</p>
+    <div id="hitl-opts" style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px"></div>
+    <div style="height:3px;border-radius:99px;background:var(--border);margin-bottom:16px">
+      <div style="height:3px;border-radius:99px;width:60%;background:var(--primary)"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;font-size:0.72rem;color:var(--on-surface-variant);margin-bottom:18px">
+      <span><kbd>1</kbd> Option A</span><span><kbd>2</kbd> Option B</span><span><kbd>Enter</kbd> Confirm</span>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <button onclick="dismissHitl()" style="padding:9px 16px;border-radius:10px;border:none;background:transparent;color:var(--on-surface-variant);font-size:0.85rem;font-weight:500;cursor:pointer">Cancel</button>
+      <button id="hitl-resume" onclick="doResume()" disabled
+        style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;border-radius:10px;border:none;background:var(--primary);color:var(--on-primary);font-size:0.875rem;font-weight:600;cursor:not-allowed;opacity:0.38;transition:opacity 0.15s">
+        <span class="material-symbols-outlined" style="font-size:16px">play_arrow</span>Resume Execution
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script>
+firebase.initializeApp({
+  apiKey:     window._FIREBASE_API_KEY     || "REPLACE_ME",
+  authDomain: window._FIREBASE_AUTH_DOMAIN || "REPLACE_ME.firebaseapp.com",
+  projectId:  window._FIREBASE_PROJECT_ID  || "REPLACE_ME",
+});
+const db   = firebase.firestore();
+const auth = firebase.auth();
+const API_BASE = window._API_BASE || "";
+
+let currentUser = null, accessToken = null, currentGoalId = null;
+let unsubGoal = null, unsubTasks = null, hitlGoalId = null, hitlChoice = null;
+
+function showScreen(name) {
+  document.getElementById('screen-landing').style.display   = name==='landing' ? 'flex' : 'none';
+  document.getElementById('screen-workspace').style.display = name==='workspace' ? 'block' : 'none';
+}
+function showView(name) {
+  ['input','tasks','done','apps'].forEach(v => {
+    const el = document.getElementById('view-'+v);
+    if (el) { el.style.display = v===name ? 'flex' : 'none'; if (v===name) el.style.flexDirection='column'; }
+  });
+  document.getElementById('main-title').textContent = {input:'New Goal',tasks:'Execution',done:'Completed',apps:'Connected Apps'}[name]||'Closer';
+  if (name === 'apps') {
+    const tok = !!accessToken;
+    const warn = document.getElementById('apps-token-warning');
+    if (warn) warn.style.display = tok ? 'none' : 'block';
+    ['apps-gmail-status','apps-cal-status'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.textContent = tok ? 'Connected' : 'Disconnected'; el.style.color = tok ? '#34d399' : '#ffb4ab'; }
+    });
+  }
+}
+
+function signIn() {
+  const p = new firebase.auth.GoogleAuthProvider();
+  p.addScope("https://www.googleapis.com/auth/gmail.compose");
+  p.addScope("https://www.googleapis.com/auth/calendar.events");
+  auth.signInWithPopup(p)
+    .then(r => {
+      accessToken = r.credential.accessToken;
+      sessionStorage.setItem('_gat', accessToken);
+      currentUser = r.user;
+      onSignedIn(r.user);
+    })
+    .catch(e => alert("Sign-in failed: "+e.message));
+}
+function onSignedIn(user) {
+  const av = document.getElementById('sb-avatar');
+  if (user.photoURL) { av.src=user.photoURL; av.style.display='block'; }
+  document.getElementById('sb-name').textContent  = user.displayName||user.email;
+  document.getElementById('sb-email').textContent = user.email;
+  const hav = document.getElementById('hdr-avatar');
+  if (user.photoURL) { hav.src=user.photoURL; hav.style.display='block'; }
+  document.getElementById('hdr-name').textContent = user.displayName||'';
+  if (!accessToken) accessToken = sessionStorage.getItem('_gat') || '';
+  showScreen('workspace'); showView('input'); setSidebarActive('nl-execution');
+  loadPastGoals();
+}
+auth.onAuthStateChanged(u => { if (u && !currentUser) { currentUser=u; onSignedIn(u); } });
+
+function signOut() {
+  sessionStorage.removeItem('_gat');
+  accessToken = ''; currentUser = null;
+  if (unsubGoal) { unsubGoal(); unsubGoal = null; }
+  if (unsubTasks) { unsubTasks(); unsubTasks = null; }
+  if (_pastUnsub) { _pastUnsub(); _pastUnsub = null; }
+  currentGoalId = null;
+  auth.signOut().then(() => showScreen('landing'));
+}
+
+function setSidebarActive(id) {
+  document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+  const el = document.getElementById(id); if (el) el.classList.add('active');
+}
+function navTo(dest) {
+  if (dest === 'execution') {
+    setSidebarActive('nl-execution');
+    if (currentGoalId) showView('tasks');
+    else showView('input');
+  } else if (dest === 'logs') {
+    setSidebarActive('nl-logs');
+    if (currentGoalId) showView('tasks');
+    else showView('input');
+  } else if (dest === 'apps') {
+    setSidebarActive('nl-apps');
+    showView('apps');
+  }
+}
+
+// Calendar
+const cal = { year:new Date().getFullYear(), month:new Date().getMonth(), sel:null, is24h:false };
+const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+function renderCal() {
+  document.getElementById('cal-label').textContent = MONTHS[cal.month]+' '+cal.year;
+  const first=new Date(cal.year,cal.month,1).getDay(), days=new Date(cal.year,cal.month+1,0).getDate(), today=new Date();
+  let html=['Su','Mo','Tu','We','Th','Fr','Sa'].map(d=>`<div class="cal-hdr">${d}</div>`).join('');
+  for (let i=0;i<first;i++) html+='<div></div>';
+  for (let d=1;d<=days;d++) {
+    const isSel=cal.sel&&cal.sel.getFullYear()===cal.year&&cal.sel.getMonth()===cal.month&&cal.sel.getDate()===d;
+    const isTod=today.getFullYear()===cal.year&&today.getMonth()===cal.month&&today.getDate()===d;
+    html+=`<button class="cal-day${isSel?' selected':''}${isTod?' today':''}" onclick="selDay(${d})">${d}</button>`;
+  }
+  document.getElementById('cal-grid').innerHTML=html; updateDL();
+}
+function selDay(d) { cal.sel=new Date(cal.year,cal.month,d); renderCal(); }
+function prevMonth() { if(cal.month===0){cal.month=11;cal.year--;}else cal.month--; renderCal(); }
+function nextMonth() { if(cal.month===11){cal.month=0;cal.year++;}else cal.month++; renderCal(); }
+function toggleAmPm() { const b=document.getElementById('ampm-btn'); b.textContent=b.textContent==='AM'?'PM':'AM'; updateDL(); }
+function toggleFmt() {
+  cal.is24h=!cal.is24h;
+  const fb=document.getElementById('fmt-btn'),ab=document.getElementById('ampm-btn'),hi=document.getElementById('t-hour');
+  if (cal.is24h) {
+    fb.textContent='24H'; ab.style.display='none'; hi.max=23;
+    let h=parseInt(hi.value),ap=ab.textContent;
+    if(ap==='PM'&&h!==12)h+=12; if(ap==='AM'&&h===12)h=0; hi.value=h;
+  } else {
+    fb.textContent='12H'; ab.style.display=''; hi.max=12;
+    let h=parseInt(hi.value),isPM=h>=12;
+    if(h>12)h-=12; if(h===0)h=12; hi.value=h;
+    ab.textContent=isPM?'PM':'AM';
+  }
+  updateDL();
+}
+function updateDL() {
+  if (!cal.sel) { document.getElementById('dl-display').textContent='Select a date'; window._dl=null; return; }
+  const d=new Date(cal.sel);
+  let h=parseInt(document.getElementById('t-hour').value)||0;
+  const m=parseInt(document.getElementById('t-min').value)||0;
+  if (!cal.is24h) { const ap=document.getElementById('ampm-btn').textContent; if(ap==='PM'&&h!==12)h+=12; if(ap==='AM'&&h===12)h=0; }
+  d.setHours(h,m,0,0); window._dl=d.toISOString();
+  document.getElementById('dl-display').textContent=
+    d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})+' '+
+    d.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+}
+function setSug(t) { document.getElementById('goal-input').value=t; }
+
+// Goal submission
+async function submitGoal() {
+  const goal=document.getElementById('goal-input').value.trim();
+  if (!goal) { alert('Enter a goal.'); return; }
+  if (!window._dl) { alert('Select a deadline.'); return; }
+  if (new Date(window._dl) <= new Date()) { alert('Deadline is in the past. Pick a future date.'); return; }
+  if (!accessToken) { alert('Session expired — please sign out and sign in again to get a fresh Google token.'); return; }
+  const btn=document.getElementById('exec-btn');
+  btn.disabled=true;
+  btn.innerHTML='<span class="material-symbols-outlined anim-spin" style="font-size:18px">sync</span> Executing...';
+  try {
+    const r=await fetch(API_BASE+"/api/goal",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({goal,deadline:window._dl,user_id:currentUser?.uid||"demo",user_email:currentUser?.email||"",access_token:accessToken||""})});
+    if (!r.ok) throw new Error(await r.text());
+    const {goal_id}=await r.json();
+    currentGoalId=goal_id;
+    document.getElementById('running-text').textContent=goal;
+    showView('tasks'); setSidebarActive('nl-execution'); subscribeGoal(goal_id);
+    document.getElementById('goal-status').textContent='AI agent working — ~30 seconds';
+  } catch(e) {
+    alert("Error: "+e.message);
+    btn.disabled=false;
+    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:20px">bolt</span>Execute';
+  }
+}
+function resetToInput() {
+  if(unsubGoal)unsubGoal(); if(unsubTasks)unsubTasks();
+  unsubGoal=unsubTasks=currentGoalId=null;
+  document.getElementById('task-list').innerHTML='';
+  document.getElementById('result-banners').innerHTML='';
+  document.getElementById('done-timeline').innerHTML='';
+  document.getElementById('done-artifacts').innerHTML='';
+  window._dl=null; cal.sel=null; renderCal();
+  const btn=document.getElementById('exec-btn');
+  btn.disabled=false; btn.innerHTML='<span class="material-symbols-outlined" style="font-size:20px">bolt</span>Execute';
+  showView('input'); setSidebarActive('nl-execution');
+}
+
+// Firestore
+const TYPE_ICON={email:'mail',calendar:'calendar_today',decision:'help',validate:'verified',misc:'settings'};
+const TYPE_COLOR={email:'#b8c3ff',calendar:'#4cd7f6',decision:'#d0bcff',validate:'#34d399',misc:'#c4c5d9'};
+function renderTask(id,data) {
+  let el=document.getElementById('task-'+id);
+  if (!el) { el=document.createElement('div'); el.id='task-'+id; document.getElementById('task-list').appendChild(el); }
+  const st=data.status||'pending', icon=TYPE_ICON[data.type]||'settings', color=TYPE_COLOR[data.type]||'#c4c5d9';
+  const spin=st==='running'||st==='retrying';
+  let sub='';
+  if (data.retryCount>1) sub=`Retry ${data.retryCount}/2 — ADK native retry`;
+  else if (data.result) sub=data.result;
+  else if (st==='needs_human') sub='Waiting for your input...';
+  el.className='ti-'+st;
+  el.style.cssText='display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;border:1px solid rgba(255,255,255,0.06);background:var(--glass);backdrop-filter:blur(20px)';
+  el.innerHTML=`
+    <div style="width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.05);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+      <span class="material-symbols-outlined${spin?' anim-spin':''}" style="font-size:18px;color:${color}">${icon}</span>
+    </div>
+    <div style="flex:1;min-width:0">
+      <p style="font-size:0.875rem;font-weight:500;color:var(--on-surface)">${data.title}</p>
+      ${sub?`<p style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${sub}</p>`:''}
+    </div>
+    <span class="badge b-${st}">${st.replace('_',' ')}</span>`;
+  if (st==='done'&&data.type==='email')    addBanner('mail',          'Gmail draft saved',      data.result||'');
+  if (st==='done'&&data.type==='calendar') addBanner('calendar_today','Calendar event created', data.result||'');
+}
+function addBanner(icon,title,desc) {
+  const bid='banner-'+icon; if (document.getElementById(bid)) return;
+  const el=document.createElement('div'); el.id=bid;
+  el.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;background:rgba(52,211,153,0.07);border:1px solid rgba(52,211,153,0.2)';
+  el.innerHTML=`<span class="material-symbols-outlined" style="font-size:16px;color:#34d399">${icon}</span><div><p style="font-size:0.82rem;font-weight:500;color:var(--on-surface)">${title}</p>${desc?`<p style="font-size:0.72rem;color:var(--on-surface-variant)">${desc}</p>`:''}</div>`;
+  document.getElementById('result-banners').appendChild(el);
+}
+function subscribeGoal(goalId) {
+  unsubGoal=db.collection("goals").doc(goalId).onSnapshot(snap=>{
+    const data=snap.data(); if(!data) return;
+    const st=data.status;
+    if (st==='done'||st==='completed') {
+      showView('done'); setSidebarActive('nl-logs');
+      document.getElementById('goal-status').textContent='Completed'; populateDone();
+    } else if (data.hitlInterruptId&&st==='awaiting_human') {
+      document.getElementById('goal-status').textContent='Awaiting Input';
+      showHitl(goalId,data.hitlInterruptId,data.hitlPayload);
+    } else {
+      document.getElementById('hitl-overlay').style.display='none';
+      if(st) document.getElementById('goal-status').textContent=st.charAt(0).toUpperCase()+st.slice(1);
+    }
+  });
+  unsubTasks=db.collection("goals").doc(goalId).collection("subtasks").onSnapshot(snap=>{
+    snap.docChanges().forEach(ch=>{ if(ch.type==='added'||ch.type==='modified') renderTask(ch.doc.id,ch.doc.data()); });
+  });
+}
+function populateDone() {
+  const tl=document.getElementById('done-timeline'), af=document.getElementById('done-artifacts');
+  if (tl.children.length>0) return;
+  document.querySelectorAll('#task-list > div').forEach(item=>{
+    const ps=item.querySelectorAll('p');
+    const div=document.createElement('div'); div.className='tl-item';
+    div.style.cssText='position:relative;padding-left:28px';
+    div.innerHTML=`<div style="position:absolute;left:0;top:2px;width:20px;height:20px;border-radius:50%;background:rgba(52,211,153,0.14);display:flex;align-items:center;justify-content:center"><span class="material-symbols-outlined" style="font-size:11px;color:#34d399">check</span></div><p style="font-size:0.875rem;font-weight:500;color:var(--on-surface)">${ps[0]?.textContent||''}</p>${ps[1]?`<p style="font-size:0.75rem;color:var(--on-surface-variant);margin-top:2px">${ps[1].textContent}</p>`:''}`;
+    tl.appendChild(div);
+  });
+  document.querySelectorAll('#result-banners > div').forEach(item=>af.appendChild(item.cloneNode(true)));
+  if (!af.children.length) af.innerHTML='<p style="font-size:0.78rem;color:var(--on-surface-variant)">No artifacts</p>';
+}
+
+// HITL
+function showHitl(goalId,interruptId,payload) {
+  hitlGoalId=goalId; hitlChoice=null;
+  const optsEl=document.getElementById('hitl-opts'); optsEl.innerHTML='';
+  if (payload?.question) document.getElementById('hitl-q').textContent=payload.question;
+  (payload?.options||[]).forEach((opt,i)=>{
+    const div=document.createElement('div'); div.className='hitl-opt'; div.dataset.id=opt.id;
+    div.innerHTML=`<div style="display:flex;align-items:flex-start;gap:12px"><div class="h-radio" style="width:18px;height:18px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);flex-shrink:0;margin-top:2px;transition:all 0.12s"></div><div style="flex:1"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px"><span style="font-size:0.68rem;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--primary)">${i===0?'RECOMMENDED':'OPTION '+(i+1)}</span>${opt.label?`<span style="font-size:0.82rem;font-weight:600;color:var(--on-surface)">${opt.label}</span>`:''}</div><p style="font-size:0.82rem;color:var(--on-surface-variant)">${opt.text||opt.description||''}</p></div></div>`;
+    div.addEventListener('click',()=>pickHitl(opt.id,div));
+    optsEl.appendChild(div);
+  });
+  document.getElementById('hitl-overlay').style.display='flex';
+  document.onkeydown=e=>{
+    if(e.key==='1'){const o=optsEl.children[0];if(o)o.click();}
+    if(e.key==='2'){const o=optsEl.children[1];if(o)o.click();}
+    if(e.key==='Enter'&&hitlChoice)doResume();
+  };
+}
+function pickHitl(id,el) {
+  hitlChoice=id;
+  document.querySelectorAll('.hitl-opt').forEach(o=>{
+    o.classList.remove('chosen');
+    o.querySelector('.h-radio').style.background='transparent';
+    o.querySelector('.h-radio').style.borderColor='rgba(255,255,255,0.2)';
+  });
+  el.classList.add('chosen');
+  el.querySelector('.h-radio').style.background='var(--primary)';
+  el.querySelector('.h-radio').style.borderColor='var(--primary)';
+  const btn=document.getElementById('hitl-resume');
+  btn.disabled=false; btn.style.opacity='1'; btn.style.cursor='pointer';
+}
+async function doResume() {
+  if (!hitlChoice) return;
+  document.getElementById('hitl-overlay').style.display='none';
+  document.onkeydown=null;
+  try {
+    const r=await fetch(`${API_BASE}/api/goal/${hitlGoalId}/resume`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({choice:hitlChoice})});
+    if (!r.ok) throw new Error(await r.text());
+    document.getElementById('goal-status').textContent='Resuming';
+  } catch(e) { alert("Resume failed: "+e.message); }
+}
+function dismissHitl() {
+  document.getElementById('hitl-overlay').style.display='none';
+  document.onkeydown=null; hitlChoice=null;
+}
+
+// Past goals sidebar
+let _pastUnsub = null;
+function loadPastGoals() {
+  if (!currentUser) return;
+  if (_pastUnsub) _pastUnsub();
+  _pastUnsub = db.collection("goals")
+    .where("userId", "==", currentUser.uid)
+    .limit(8)
+    .onSnapshot(snap => {
+      const list = document.getElementById('past-goals-list');
+      if (!list) return;
+      list.innerHTML = '';
+      if (snap.empty) {
+        list.innerHTML = '<p style="font-size:0.72rem;color:var(--on-surface-variant);padding:4px 12px">No past goals</p>';
+        return;
+      }
+      const docs = [];
+      snap.forEach(doc => docs.push({id: doc.id, data: doc.data()}));
+      docs.sort((a, b) => ((b.data.createdAt?.seconds||0) - (a.data.createdAt?.seconds||0)));
+      docs.forEach(({id: docId, data: d}) => {
+        const el = document.createElement('div');
+        el.style.cssText = 'padding:6px 12px;border-radius:8px;cursor:pointer;transition:background 0.12s';
+        const statusColor = {done:'#34d399',completed:'#34d399',error:'#ffb4ab',awaiting_human:'#b8c3ff'}[d.status] || '#c4c5d9';
+        el.innerHTML = `
+          <p style="font-size:0.78rem;font-weight:500;color:var(--on-surface);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${d.text||'Untitled'}</p>
+          <p style="font-size:0.68rem;color:${statusColor};margin-top:1px">${d.status||'pending'}</p>
+        `;
+        el.addEventListener('mouseenter', () => el.style.background='rgba(255,255,255,0.04)');
+        el.addEventListener('mouseleave', () => el.style.background='transparent');
+        el.addEventListener('click', () => openPastGoal(docId, d));
+        list.appendChild(el);
+      });
+    }, err => console.error('past goals:', err));
+}
+
+function openPastGoal(goalId, data) {
+  if (unsubGoal) unsubGoal(); if (unsubTasks) unsubTasks();
+  document.getElementById('task-list').innerHTML = '';
+  document.getElementById('result-banners').innerHTML = '';
+  currentGoalId = goalId;
+  document.getElementById('running-text').textContent = data.text || '';
+  showView('tasks'); setSidebarActive('nl-execution');
+  subscribeGoal(goalId);
+}
+
+renderCal();
+</script>
+</body>
+</html>
