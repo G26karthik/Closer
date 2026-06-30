@@ -72,6 +72,10 @@ Return ONLY JSON: {{"verdict": "accept" or "reject", "reason": "<one sentence>"}
         # Judge response unparseable — fail open (accept) rather than block the demo.
         log.warning("evaluate_output.judge_unparseable", raw=raw)
         return
+    if not isinstance(verdict, dict):
+        # Valid JSON but not an object (e.g. list/string) — fail open, same intent.
+        log.warning("evaluate_output.judge_unexpected_shape", raw=raw)
+        return
     if verdict.get("verdict") == "reject":
         raise OutputQualityError(verdict.get("reason", "output rejected by evaluator"))
 
@@ -412,14 +416,25 @@ async def request_human_decision(
 ) -> AsyncGenerator[Any, None]:
     """Pause the workflow and surface a decision card in the frontend dashboard.
 
-    ADK calls this function twice for HITL nodes:
+    Self-skips (marking the goal done directly) if the planner didn't emit a
+    "decision" subtask — not every goal needs human judgment. This is the
+    workflow's final node, so it is also responsible for marking the goal
+    `done` in both the skip and the decision-resolved paths.
+
+    ADK calls this function twice when a decision subtask exists:
       - First call:  no resume input → yields RequestInput event → workflow pauses.
-      - Second call: resume_inputs populated → records choice and marks tasks done.
+      - Second call: resume_inputs populated → records choice and marks goal done.
 
     @param ctx: ADK node context with resume_inputs populated on the second call.
     @param goal_id: Firestore document ID for subtask and goal updates.
-    @yields: RequestInput event on the first call; nothing on the second.
+    @yields: RequestInput event on the first call when a decision is needed; nothing otherwise.
     """
+    subtask = _find_subtask(ctx.state["subtasks"], "decision")
+    if subtask is None:
+        await fs.update_goal(goal_id, {"status": "done"})
+        log.info("request_human_decision.skip_not_planned", goal_id=goal_id)
+        return
+
     interrupt_id = f"hitl_project_desc_{goal_id}"
 
     resume = ctx.resume_inputs.get(interrupt_id)
@@ -427,15 +442,10 @@ async def request_human_decision(
         choice = resume.get("choice", "A")
         ctx.state["human_decision"] = choice
         now = datetime.now(timezone.utc).isoformat()
-        await fs.update_subtask(goal_id, "request_human_decision", {
+        await fs.update_subtask(goal_id, subtask["id"], {
             "status": "done",
             "result": f"Selected: Option {choice}",
             "needsHuman": False,
-            "executedAt": now,
-        })
-        await fs.update_subtask(goal_id, "final_prep", {
-            "status": "done",
-            "result": "All tasks complete",
             "executedAt": now,
         })
         await fs.update_goal(goal_id, {"status": "done", "hitlInterruptId": None})
@@ -443,7 +453,7 @@ async def request_human_decision(
         return
 
     # First call: surface the decision card in the dashboard.
-    await fs.update_subtask(goal_id, "request_human_decision", {
+    await fs.update_subtask(goal_id, subtask["id"], {
         "status": "needs_human",
         "needsHuman": True,
     })
@@ -471,7 +481,7 @@ async def request_human_decision(
     yield create_request_input_event(
         RequestInput(  # type: ignore[call-arg]
             interrupt_id=interrupt_id,
-            message="Which project description do you want submitted?",
+            message=subtask.get("title", "Which project description do you want submitted?"),
             payload=payload,
         )
     )

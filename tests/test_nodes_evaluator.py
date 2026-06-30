@@ -16,6 +16,17 @@ async def test_evaluate_output_accepts_good_output():
 
 
 @pytest.mark.asyncio
+async def test_evaluate_output_valid_json_wrong_shape_fails_open():
+    # Gemini returns valid JSON that isn't an object (a list). Must not raise
+    # AttributeError or OutputQualityError — fail open, same as unparseable.
+    mock_response = AsyncMock()
+    mock_response.text = '["accept"]'
+    with patch("agent.nodes._gemini.aio.models.generate_content", return_value=mock_response):
+        result = await _evaluate_output("Submit report", "2026-07-05", "communicate", "Some output.")
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_evaluate_output_rejects_bad_output():
     mock_response = AsyncMock()
     mock_response.text = json.dumps({"verdict": "reject", "reason": "missing deadline"})

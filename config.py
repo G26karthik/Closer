@@ -49,6 +49,11 @@ class _Config:
     # SEE: injected into HTML in api.py — keep this value trusted/internal.
     CLOUD_RUN_SERVICE_URL: str = os.environ.get("CLOUD_RUN_SERVICE_URL", "")
 
+    # Optional shared secret for the Cloud Scheduler → /internal/tick call. When
+    # set, /internal/tick also requires a matching X-Tick-Secret header on top of
+    # Cloud Run IAM. Empty (default) disables the header check for local/dev.
+    MONITOR_TICK_SECRET: str = os.environ.get("MONITOR_TICK_SECRET", "")
+
     PORT: int = int(os.environ.get("PORT", "8080"))
 
 

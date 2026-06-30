@@ -24,6 +24,11 @@ _GEMINI_MODEL = "gemini-2.0-flash"
 # and it hasn't reached a terminal status yet.
 _RISK_WINDOW_HOURS = 4
 
+# Minimum gap between monitor interventions on the same goal. Without this, every
+# scheduler tick re-fires Gemini and spams the activity feed for a goal that stays
+# at-risk for hours. Bounded stop condition, not open-ended retry.
+_MIN_RECHECK_MINUTES = 30
+
 
 def _is_at_risk(goal: dict) -> bool:
     """Pure function: does this goal need monitor intervention right now?
@@ -50,6 +55,10 @@ async def check_and_intervene(goal_id: str, goal: dict) -> None:
     """
     if not _is_at_risk(goal):
         return
+
+    last_check = parse_deadline(goal.get("lastMonitorCheck"))
+    if last_check is not None and datetime.now(timezone.utc) - last_check < timedelta(minutes=_MIN_RECHECK_MINUTES):
+        return  # already intervened recently — avoid duplicate Gemini calls and activity-feed spam
 
     prompt = f"""An autonomous deadline-management agent is monitoring this goal, which is
 running behind schedule.

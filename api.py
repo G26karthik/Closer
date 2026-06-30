@@ -129,11 +129,15 @@ async def resume_goal(request: Request, goal_id: str, body: ResumeRequest, backg
 
 
 @app.post("/internal/tick")
-async def monitor_tick() -> dict[str, int]:
-    """Cloud Scheduler target. Auth is enforced at the Cloud Run IAM layer
-    (roles/run.invoker + OIDC token, service not allow-unauthenticated) — no
-    manual token verification needed here per /search-first findings.
+async def monitor_tick(request: Request) -> dict[str, int]:
+    """Cloud Scheduler target. Cloud Run IAM (roles/run.invoker + OIDC) restricts which
+    service accounts can invoke the SERVICE, but this service also serves the public
+    frontend/API, so IAM alone doesn't gate this specific endpoint. When
+    MONITOR_TICK_SECRET is configured, also require a matching X-Tick-Secret header
+    (set via `gcloud scheduler jobs create http ... --headers X-Tick-Secret=<secret>`).
     """
+    if cfg.MONITOR_TICK_SECRET and request.headers.get("X-Tick-Secret") != cfg.MONITOR_TICK_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
     goals = await list_active_goals_for_monitor()
     checked = 0
     for goal in goals:
