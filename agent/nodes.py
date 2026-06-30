@@ -15,6 +15,7 @@ from google import genai
 from google.adk.agents.context import Context
 from google.adk.events.request_input import RequestInput
 from google.adk.workflow.utils._workflow_hitl_utils import create_request_input_event
+from google.genai import types as genai_types
 
 from agent.errors import OutputQualityError
 from config import cfg
@@ -307,6 +308,55 @@ async def create_calendar_event(
     await fs.log_activity(goal_id, "SchedulerAgent", "event_scheduled",
                            f"Found free slot {start_dt.isoformat()} - {end_dt.isoformat()}")
     log.info("create_calendar_event.done", goal_id=goal_id, event_id=event_id)
+
+
+# ---------------------------------------------------------------------------
+# Node 3.5: Research topic (Gemini + Google Search grounding)
+# ---------------------------------------------------------------------------
+
+async def research_topic(
+    ctx: Context,
+    goal: str,
+    deadline: str,
+    goal_id: str,
+) -> None:
+    """Use Gemini with Google Search grounding to gather info needed to accomplish the goal.
+
+    Self-skips if the planner didn't emit a "research" subtask. New capability —
+    the agent previously had zero search/research tool access.
+
+    @param ctx: ADK node context.
+    @param goal: Plain-text goal description.
+    @param deadline: ISO 8601 deadline string.
+    @param goal_id: Firestore document ID for subtask updates.
+    @throws: OutputQualityError if self-review rejects the findings (triggers retry).
+    """
+    subtask = _find_subtask(ctx.state["subtasks"], "research")
+    if subtask is None:
+        log.info("research_topic.skip_not_planned", goal_id=goal_id)
+        return
+
+    await fs.update_subtask(goal_id, subtask["id"], {"status": "running"})
+    config = genai_types.GenerateContentConfig(
+        tools=[genai_types.Tool(google_search=genai_types.GoogleSearch())],
+    )
+    prompt = (
+        f"Research what's needed to accomplish this goal before its deadline.\n"
+        f"Goal: {goal}\nDeadline: {deadline}\n"
+        "Return a concise (under 150 words) summary of the most relevant, current findings."
+    )
+    response = await _gemini.aio.models.generate_content(
+        model=_GEMINI_MODEL, contents=prompt, config=config,
+    )
+    summary = (response.text or "").strip()
+    await _evaluate_output(goal, deadline, "research", summary)
+
+    now = datetime.now(timezone.utc).isoformat()
+    await fs.update_subtask(goal_id, subtask["id"], {
+        "status": "done", "result": summary, "executedAt": now,
+    })
+    await fs.log_activity(goal_id, "ResearchAgent", "research_complete", summary[:200])
+    log.info("research_topic.done", goal_id=goal_id)
 
 
 # ---------------------------------------------------------------------------

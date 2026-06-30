@@ -1,9 +1,10 @@
 """ADK 2.x Workflow definition for Closer.
 
-Linear chain: START -> plan_goal -> draft_email -> create_calendar_event -> request_human_decision
+Linear chain: START -> plan_goal -> draft_email -> create_calendar_event ->
+research_topic -> request_human_decision
 
-- draft_email has RetryConfig(max_attempts=2) — ADK native retry on EmailValidationError
-  or OutputQualityError (self-review rejection)
+- draft_email and research_topic have RetryConfig(max_attempts=2) — ADK native
+  retry on EmailValidationError / OutputQualityError (self-review rejection)
 - request_human_decision is an async generator that yields a HITL event
 """
 from pydantic import BaseModel
@@ -21,6 +22,7 @@ from agent.nodes import (
     draft_email,
     plan_goal,
     request_human_decision,
+    research_topic,
 )
 
 
@@ -60,6 +62,15 @@ _calendar_node = FunctionNode(
     state_schema=CloserState,
 )
 
+_research_node = FunctionNode(
+    func=research_topic,
+    name="research_topic",
+    state_schema=CloserState,
+    retry_config=RetryConfig(
+        max_attempts=2, initial_delay=1.0, exceptions=[OutputQualityError],
+    ),
+)
+
 _hitl_node = FunctionNode(
     func=request_human_decision,
     name="request_human_decision",
@@ -71,6 +82,6 @@ closer_workflow = Workflow(
     name="closer_workflow",
     state_schema=CloserState,
     edges=[
-        (START, _plan_node, _email_node, _calendar_node, _hitl_node),
+        (START, _plan_node, _email_node, _calendar_node, _research_node, _hitl_node),
     ],
 )
