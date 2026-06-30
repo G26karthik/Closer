@@ -20,7 +20,7 @@ from agent.errors import OutputQualityError
 from config import cfg
 from logger import get_logger
 from tools import firestore_client as fs
-from tools.calendar_client import create_event
+from tools.calendar_client import create_event, find_free_slot
 from tools.gmail_client import create_draft
 
 log = get_logger(__name__)
@@ -264,28 +264,34 @@ async def create_calendar_event(
     goal_id: str,
     access_token: str,
 ) -> None:
-    """Create a Google Calendar event blocking time before the deadline.
+    """Block real free calendar time before the deadline (freebusy-aware, not a blind block).
+
+    Self-skips if the planner didn't emit a "schedule" subtask.
 
     @param ctx: ADK node context.
     @param goal: Plain-text goal description used as the event summary.
     @param deadline: ISO 8601 deadline string for the event end time.
     @param goal_id: Firestore document ID for subtask updates.
-    @param access_token: OAuth token with calendar.events scope.
+    @param access_token: OAuth token with calendar.events + calendar.freebusy scope.
     """
-    await fs.update_subtask(goal_id, "create_calendar_event", {"status": "running"})
+    subtask = _find_subtask(ctx.state["subtasks"], "schedule")
+    if subtask is None:
+        log.info("create_calendar_event.skip_not_planned", goal_id=goal_id)
+        return
 
+    await fs.update_subtask(goal_id, subtask["id"], {"status": "running"})
     try:
         if "T" in deadline:
             end_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
         else:
             end_dt = datetime.strptime(deadline, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     except ValueError:
-        # Fallback: unrecognised format — block starting from now.
-        log.warning("create_calendar_event.deadline_parse_failed",
-                    goal_id=goal_id, deadline=deadline)
+        log.warning("create_calendar_event.deadline_parse_failed", goal_id=goal_id, deadline=deadline)
         end_dt = datetime.now(timezone.utc) + timedelta(hours=_PREP_WINDOW_HOURS)
 
-    start_dt = end_dt - timedelta(hours=_PREP_WINDOW_HOURS)
+    earliest = end_dt - timedelta(hours=_PREP_WINDOW_HOURS * 4)
+    start_dt, end_dt = find_free_slot(access_token, earliest, end_dt, _PREP_WINDOW_HOURS)
+
     event_id = create_event(
         access_token=access_token,
         summary=f"DEADLINE: {goal}",
@@ -295,11 +301,11 @@ async def create_calendar_event(
     )
     ctx.state["calendar_event_id"] = event_id
     now = datetime.now(timezone.utc).isoformat()
-    await fs.update_subtask(goal_id, "create_calendar_event", {
-        "status": "done",
-        "result": f"event:{event_id}",
-        "executedAt": now,
+    await fs.update_subtask(goal_id, subtask["id"], {
+        "status": "done", "result": f"event:{event_id}", "executedAt": now,
     })
+    await fs.log_activity(goal_id, "SchedulerAgent", "event_scheduled",
+                           f"Found free slot {start_dt.isoformat()} - {end_dt.isoformat()}")
     log.info("create_calendar_event.done", goal_id=goal_id, event_id=event_id)
 
 

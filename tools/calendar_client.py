@@ -3,6 +3,8 @@
 @description Google Calendar API client for creating events.
 @module closer.tools.calendar_client
 """
+from datetime import datetime, timedelta
+
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from google.oauth2.credentials import Credentials
@@ -60,3 +62,52 @@ def create_event(
         raise
     log.info("calendar.event_created", event_id=result["id"], summary=summary)
     return result["id"]
+
+
+def find_free_slot(
+    access_token: str,
+    earliest: datetime,
+    latest: datetime,
+    duration_hours: int,
+) -> tuple[datetime, datetime]:
+    """Find a free window of duration_hours within [earliest, latest], preferring
+    the slot closest to `latest` (i.e. closest to the deadline).
+
+    Falls back to (latest - duration_hours, latest) if the API call fails or no
+    free window of the requested size exists in range — callers always get a
+    usable slot, never an exception, matching the existing deadline-parse
+    fallback pattern in agent/nodes.py.
+
+    @param access_token: OAuth token with calendar.freebusy scope.
+    @param earliest: Earliest acceptable start time.
+    @param latest: Latest acceptable end time (typically the deadline).
+    @param duration_hours: Required block length.
+    @returns: (start, end) datetimes for the chosen slot.
+    """
+    fallback = (latest - timedelta(hours=duration_hours), latest)
+    try:
+        service = _calendar_service(access_token)
+        result = service.freebusy().query(body={
+            "timeMin": earliest.isoformat(),
+            "timeMax": latest.isoformat(),
+            "items": [{"id": _PRIMARY_CALENDAR}],
+        }).execute()
+        busy = result.get("calendars", {}).get(_PRIMARY_CALENDAR, {}).get("busy", [])
+    except HttpError as exc:
+        log.warning("calendar.freebusy_failed", error=str(exc))
+        return fallback
+
+    busy_windows = sorted(
+        (datetime.fromisoformat(b["start"]), datetime.fromisoformat(b["end"]))
+        for b in busy
+    )
+    candidate_end = latest
+    for busy_start, busy_end in reversed(busy_windows):
+        if candidate_end <= busy_start:
+            continue
+        if candidate_end - timedelta(hours=duration_hours) >= busy_end:
+            return (candidate_end - timedelta(hours=duration_hours), candidate_end)
+        candidate_end = min(candidate_end, busy_start)
+    if candidate_end - timedelta(hours=duration_hours) >= earliest:
+        return (candidate_end - timedelta(hours=duration_hours), candidate_end)
+    return fallback
