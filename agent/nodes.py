@@ -16,12 +16,12 @@ from google.adk.agents.context import Context
 from google.adk.events.request_input import RequestInput
 from google.adk.workflow.utils._workflow_hitl_utils import create_request_input_event
 
-from agent.errors import EmailValidationError
+from agent.errors import OutputQualityError
 from config import cfg
 from logger import get_logger
 from tools import firestore_client as fs
 from tools.calendar_client import create_event
-from tools.gmail_client import send_email
+from tools.gmail_client import create_draft
 
 log = get_logger(__name__)
 
@@ -33,6 +33,46 @@ _gemini = genai.Client(api_key=cfg.GEMINI_API_KEY)
 _GEMINI_MODEL = "gemini-2.0-flash"
 
 _SUBTASK_TYPES = {"communicate", "schedule", "research", "produce_document", "decision"}
+
+
+async def _evaluate_output(goal: str, deadline: str, subtask_type: str, output_summary: str) -> None:
+    """Gemini-as-judge: reject specialist output that doesn't actually serve the goal.
+
+    This is the real evaluator-optimizer check that replaces the old scripted
+    "always fail attempt 1" demo mechanic in draft_email.
+
+    @param goal: Plain-text goal description.
+    @param deadline: ISO 8601 deadline string.
+    @param subtask_type: One of _SUBTASK_TYPES — used only for prompt framing.
+    @param output_summary: The specialist's produced content (email body, slot chosen, etc).
+    @throws: OutputQualityError if the judge rejects the output.
+    """
+    prompt = f"""You are a strict quality reviewer for an autonomous execution agent.
+
+Goal: {goal}
+Deadline: {deadline}
+Subtask type: {subtask_type}
+Produced output: {output_summary}
+
+Does this output genuinely serve the goal and correctly account for the deadline?
+Return ONLY JSON: {{"verdict": "accept" or "reject", "reason": "<one sentence>"}}"""
+
+    response = await _gemini.aio.models.generate_content(
+        model=_GEMINI_MODEL,
+        contents=prompt,
+    )
+    raw = (response.text or "").strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    try:
+        verdict = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        # Judge response unparseable — fail open (accept) rather than block the demo.
+        log.warning("evaluate_output.judge_unparseable", raw=raw)
+        return
+    if verdict.get("verdict") == "reject":
+        raise OutputQualityError(verdict.get("reason", "output rejected by evaluator"))
+
 
 # Block this many hours before the deadline for the calendar prep event.
 _PREP_WINDOW_HOURS = 2
@@ -171,68 +211,46 @@ async def draft_email(
     user_email: str,
     access_token: str,
 ) -> None:
-    """Draft and send a submission email via the Gmail API.
+    """Draft a submission email via Gmail (draft only — never auto-sent) and self-review it.
 
-    NOTE: Attempt 1 intentionally omits the deadline from the subject line to
-    demonstrate ADK's native RetryConfig. The EmailValidationError triggers a
-    second attempt that includes the deadline, which passes validation.
-    This is a deliberate demo mechanic, not a bug.
+    Self-skips if the planner didn't emit a "communicate" subtask. On self-review
+    rejection, raises OutputQualityError to trigger ADK's native RetryConfig.
 
-    @param ctx: ADK node context. `ctx.attempt_count` is 1-indexed.
+    @param ctx: ADK node context. ctx.attempt_count is 1-indexed.
     @param goal: Plain-text goal description.
-    @param deadline: ISO 8601 deadline string to include from attempt 2 onward.
+    @param deadline: ISO 8601 deadline string.
     @param goal_id: Firestore document ID for subtask updates.
     @param user_email: Recipient address; falls back to 'me' (authenticated user).
     @param access_token: OAuth token with gmail.compose scope.
-    @throws: EmailValidationError on attempt 1 to trigger ADK retry.
+    @throws: OutputQualityError if self-review rejects the draft (triggers retry).
     """
+    subtask = _find_subtask(ctx.state["subtasks"], "communicate")
+    if subtask is None:
+        log.info("draft_email.skip_not_planned", goal_id=goal_id)
+        return
+
     attempt = ctx.attempt_count
     log.info("draft_email.start", goal_id=goal_id, attempt=attempt)
-    await fs.update_subtask(goal_id, "draft_email", {
-        "status": "running",
-        "retryCount": attempt,
-    })
+    await fs.update_subtask(goal_id, subtask["id"], {"status": "running", "retryCount": attempt})
 
-    subject = f"Submission: {goal}"
-    if attempt == 1:
-        body = (
-            "Hi,\n\nPlease find our project submission attached.\n\n"
-            "Best regards,\nThe Team"
-        )
-    else:
-        subject = f"Submission by {deadline}: {goal}"
-        body = (
-            f"Hi,\n\nPlease find our project submission attached.\n\n"
-            f"Submission deadline: {deadline}\n\n"
-            "Best regards,\nThe Team"
-        )
+    subject = f"Submission by {deadline}: {goal}"
+    body = (
+        f"Hi,\n\nPlease find our project submission attached.\n\n"
+        f"Submission deadline: {deadline}\n\n"
+        "Best regards,\nThe Team"
+    )
 
-    if deadline not in subject:
-        await fs.update_subtask(goal_id, "draft_email", {"status": "retry_pending"})
-        raise EmailValidationError(
-            f"Draft subject missing deadline '{deadline}' — retrying."
-        )
+    await _evaluate_output(goal, deadline, "communicate", f"Subject: {subject}\nBody: {body}")
 
     to_addr = user_email or "me"
-    msg_id = send_email(
-        access_token=access_token,
-        to=to_addr,
-        subject=subject,
-        body=body,
-    )
-    ctx.state["email_draft_id"] = msg_id
+    draft_id = create_draft(access_token=access_token, to=to_addr, subject=subject, body=body)
+    ctx.state["email_draft_id"] = draft_id
     now = datetime.now(timezone.utc).isoformat()
-    await fs.update_subtask(goal_id, "draft_email", {
-        "status": "done",
-        "result": f"sent:{msg_id}",
-        "executedAt": now,
+    await fs.update_subtask(goal_id, subtask["id"], {
+        "status": "done", "result": f"drafted:{draft_id}", "executedAt": now,
     })
-    await fs.update_subtask(goal_id, "validate_draft", {
-        "status": "done",
-        "result": f"Deadline '{deadline}' confirmed in subject",
-        "executedAt": now,
-    })
-    log.info("draft_email.done", goal_id=goal_id, msg_id=msg_id)
+    await fs.log_activity(goal_id, "CommunicationAgent", "draft_complete", f"Drafted: {subject}")
+    log.info("draft_email.done", goal_id=goal_id, draft_id=draft_id)
 
 
 # ---------------------------------------------------------------------------

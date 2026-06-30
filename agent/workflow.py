@@ -3,6 +3,7 @@
 Linear chain: START -> plan_goal -> draft_email -> create_calendar_event -> request_human_decision
 
 - draft_email has RetryConfig(max_attempts=2) — ADK native retry on EmailValidationError
+  or OutputQualityError (self-review rejection)
 - request_human_decision is an async generator that yields a HITL event
 """
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ from google.adk.workflow import (
     Workflow,
 )
 
-from agent.errors import EmailValidationError
+from agent.errors import EmailValidationError, OutputQualityError
 from agent.nodes import (
     create_calendar_event,
     draft_email,
@@ -49,7 +50,7 @@ _email_node = FunctionNode(
     retry_config=RetryConfig(
         max_attempts=2,
         initial_delay=1.0,
-        exceptions=[EmailValidationError],
+        exceptions=[EmailValidationError, OutputQualityError],
     ),
 )
 
