@@ -42,51 +42,64 @@ _PREP_WINDOW_HOURS = 2
 # Node 1: Plan the goal using Gemini
 # ---------------------------------------------------------------------------
 
+def _find_subtask(subtasks: list[dict[str, Any]], subtask_type: str) -> dict[str, Any] | None:
+    """Return the first subtask of the given type, or None if the planner didn't emit one.
+
+    @param subtasks: ctx.state["subtasks"] — the dynamic list written by plan_goal.
+    @param subtask_type: One of _SUBTASK_TYPES.
+    @returns: Matching subtask dict, or None.
+    """
+    for subtask in subtasks:
+        if subtask["type"] == subtask_type:
+            return subtask
+    return None
+
+
 async def plan_goal(
     ctx: Context,
     goal: str,
     deadline: str,
     goal_id: str,
 ) -> None:
-    """Use Gemini to generate task titles, then write five fixed-schema subtasks to Firestore.
+    """Use Gemini to decide WHICH subtask types this goal needs and HOW MANY, then
+    write the resulting dynamic subtask list to Firestore.
 
-    The fixed IDs, types, and needsHuman flags are enforced after Gemini returns,
-    so a hallucinated schema never reaches Firestore.
+    Unlike the old fixed 5-row schema, a simple goal may produce 1-2 subtasks and
+    a complex one may produce up to 6. Specialist nodes downstream self-skip when
+    no subtask of their type is present (see Task 3+).
 
     @param ctx: ADK node context with mutable state.
     @param goal: Plain-text goal description from GoalRequest.
     @param deadline: ISO 8601 deadline string.
     @param goal_id: Firestore document ID for this goal.
     """
-    default_titles = [
-        f"Draft submission email for {goal[:35]}",
-        "Block 2h prep window before deadline",
-        "Validate email contains deadline date",
-        "Choose project description A or B",
-        "Final checklist before submission",
+    # Conservative fallback if Gemini parsing fails entirely — always include a
+    # communicate + decision pair so the goal is never silently inert.
+    fallback: list[dict[str, Any]] = [
+        {"id": "communicate_0", "type": "communicate",
+         "title": f"Draft submission email for {goal[:35]}", "needsHuman": False},
+        {"id": "decision_0", "type": "decision",
+         "title": "Choose project description A or B", "needsHuman": True},
     ]
 
-    subtasks: list[dict[str, Any]] = [
-        {**tmpl, "title": default_titles[i]}
-        for i, tmpl in enumerate(_SUBTASK_TEMPLATES)
-    ]
+    prompt = f"""You are a task planner for an autonomous execution agent. Given a goal
+and deadline, decide which of these capabilities are actually needed — do not include
+ones that aren't relevant:
 
-    prompt = f"""You are a task planner. Write 5 specific, action-oriented task titles for this goal.
+- communicate: draft an email related to the goal
+- schedule: block calendar time before the deadline
+- research: look up current information needed to accomplish the goal
+- produce_document: generate a written deliverable document
+- decision: a choice only the human can make (include at most once, only if genuinely needed)
 
 Goal: {goal}
 Deadline: {deadline}
 
-Return ONLY this JSON array — keep id/type/needsHuman exactly as shown, customize only the title:
-[
-  {{"id": "draft_email", "title": "Draft submission email by {deadline}", "type": "email", "needsHuman": false}},
-  {{"id": "create_calendar_event", "title": "Block 2h prep window before deadline", "type": "calendar", "needsHuman": false}},
-  {{"id": "validate_draft", "title": "Validate email contains deadline date", "type": "validate", "needsHuman": false}},
-  {{"id": "request_human_decision", "title": "Choose project description A or B", "type": "decision", "needsHuman": true}},
-  {{"id": "final_prep", "title": "Final checklist before submission", "type": "misc", "needsHuman": false}}
-]
+Return ONLY a JSON array, 1-6 items, each: {{"type": "<one of the 5 types above>", "title": "<specific action-oriented title>"}}.
+Order matters: communicate/schedule/research/produce_document before decision.
+Do not invent other type values."""
 
-Customize the title fields to be specific to: "{goal}". Return only the JSON array."""
-
+    subtasks: list[dict[str, Any]] = fallback
     try:
         response = await _gemini.aio.models.generate_content(
             model=_GEMINI_MODEL,
@@ -96,18 +109,31 @@ Customize the title fields to be specific to: "{goal}". Return only the JSON arr
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0].strip()
         parsed: list[dict[str, Any]] = json.loads(raw)
-        # Enforce fixed schema fields — only accept the title from Gemini.
-        for i, tmpl in enumerate(_SUBTASK_TEMPLATES):
-            if i < len(parsed):
-                subtasks[i] = {**tmpl, "title": parsed[i].get("title", default_titles[i])}
+        built: list[dict[str, Any]] = []
+        type_counts: dict[str, int] = {}
+        for item in parsed:
+            item_type = item.get("type")
+            if item_type not in _SUBTASK_TYPES:
+                continue
+            idx = type_counts.get(item_type, 0)
+            type_counts[item_type] = idx + 1
+            built.append({
+                "id": f"{item_type}_{idx}",
+                "type": item_type,
+                "title": item.get("title", item_type),
+                "needsHuman": item_type == "decision",
+            })
+        if built:
+            subtasks = built
     except Exception as exc:
-        # LEGACY: Gemini response parsing failing silently keeps the demo moving.
-        # Do not remove this fallback without adding a hard error + user feedback path.
         log.warning("plan_goal.gemini_fallback", goal_id=goal_id, error=str(exc))
 
     ctx.state["subtasks"] = subtasks
     await fs.create_subtasks(goal_id, subtasks)
     await fs.update_goal(goal_id, {"status": "executing"})
+    await fs.log_activity(goal_id, "PlannerAgent", "plan_complete",
+                           f"Decided on {len(subtasks)} subtasks: " +
+                           ", ".join(s["type"] for s in subtasks))
     log.info("plan_goal.done", goal_id=goal_id, subtask_count=len(subtasks))
 
 
