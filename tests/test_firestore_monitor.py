@@ -68,3 +68,35 @@ async def test_goal_with_malformed_or_missing_deadline_sorts_last():
 
     assert result[0]["id"] == "goal-valid"
     assert {g["id"] for g in result[1:]} == {"goal-malformed", "goal-missing"}
+
+
+@pytest.mark.asyncio
+async def test_goal_with_offsetless_deadline_does_not_crash_sort():
+    """Regression test: an ISO deadline with no UTC offset (no `Z`, no `+00:00`)
+    used to parse as a naive datetime, crashing the whole-list `.sort()` with
+    'can't compare offset-naive and offset-aware datetimes' — for ALL goals,
+    not just the offending one. parse_deadline must normalize it to UTC.
+    """
+    now = datetime.now(timezone.utc)
+    goal_aware_far = _make_fake_doc(
+        "goal-aware-far", {"deadline": (now + timedelta(hours=10)).isoformat(), "status": "executing"}
+    )
+    goal_offsetless = _make_fake_doc(
+        "goal-offsetless", {"deadline": "2026-07-05T10:00:00", "status": "executing"}
+    )
+    goal_aware_near = _make_fake_doc(
+        "goal-aware-near", {"deadline": (now + timedelta(hours=1)).isoformat(), "status": "executing"}
+    )
+
+    fake_query = MagicMock()
+    fake_query.stream.return_value = _async_iter([goal_aware_far, goal_offsetless, goal_aware_near])
+    fake_db = MagicMock()
+    fake_db.collection.return_value.where.return_value = fake_query
+
+    with patch("tools.firestore_client._get_db", return_value=fake_db):
+        result = await list_active_goals_for_monitor()
+
+    # Offset-less deadline is treated as UTC wall-clock time, so it sorts by
+    # that value alongside the aware deadlines rather than crashing or
+    # falling back to "sorts last".
+    assert [g["id"] for g in result] == ["goal-aware-near", "goal-aware-far", "goal-offsetless"]
