@@ -93,7 +93,6 @@ window._FIREBASE_API_KEY = "{cfg.FIREBASE_API_KEY}";
 window._FIREBASE_AUTH_DOMAIN = "{cfg.FIREBASE_AUTH_DOMAIN}";
 window._FIREBASE_PROJECT_ID = "{cfg.FIRESTORE_PROJECT_ID}";
 window._GOOGLE_CLIENT_ID = "{cfg.GOOGLE_CLIENT_ID}";
-window._API_BASE = "{cfg.CLOUD_RUN_SERVICE_URL}";
 </script>"""
     html = html.replace("</head>", config_script + "\n</head>", 1)
     return HTMLResponse(content=html)
