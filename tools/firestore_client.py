@@ -4,8 +4,9 @@
 @module closer.tools.firestore_client
 
 Collections:
-  goals/{goalId}               — goal document
-  goals/{goalId}/subtasks/{id} — subtask documents
+  goals/{goalId}                — goal document
+  goals/{goalId}/subtasks/{id}  — subtask documents
+  goals/{goalId}/activity/{id}  — agent-decision event log (Activity Feed)
 """
 from typing import Any
 

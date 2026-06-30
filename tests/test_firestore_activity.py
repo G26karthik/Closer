@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
+from google.cloud import firestore
 from tools.firestore_client import log_activity
 
 
@@ -15,3 +16,5 @@ async def test_log_activity_writes_to_subcollection():
     written = fake_doc_ref.add.await_args[0][0]
     assert written["actor"] == "PlannerAgent"
     assert written["decision"] == "plan_complete"
+    assert written["reason"] == "2 subtasks decided"
+    assert written["ts"] == firestore.SERVER_TIMESTAMP
