@@ -153,6 +153,7 @@
       <a class="nav-link" id="nl-apps" onclick="navTo('apps')">
         <span class="material-symbols-outlined nl-icon">apps</span><span class="nl-label">Connected Apps</span>
       </a>
+      <!-- Past goals -->
       <div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--border)">
         <p style="font-size:0.68rem;font-weight:700;letter-spacing:0.08em;color:var(--on-surface-variant);padding:0 12px;margin-bottom:6px">RECENT</p>
         <div id="past-goals-list" style="display:flex;flex-direction:column;gap:2px"></div>
@@ -243,8 +244,8 @@
     <!-- VIEW: Tasks -->
     <div id="view-tasks" style="display:none;flex-direction:column;flex:1">
       <div style="padding:16px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
-        <div class="anim-pulse" style="width:8px;height:8px;border-radius:50%;background:#34d399;flex-shrink:0"></div>
-        <p style="font-size:0.85rem;color:var(--on-surface-variant)">Running: <span id="running-text" style="color:var(--on-surface);font-weight:500"></span></p>
+        <div id="running-dot" class="anim-pulse" style="width:8px;height:8px;border-radius:50%;background:#34d399;flex-shrink:0"></div>
+        <p style="font-size:0.85rem;color:var(--on-surface-variant)"><span id="running-label">Running: </span><span id="running-text" style="color:var(--on-surface);font-weight:500"></span></p>
       </div>
       <div style="display:flex;gap:24px;padding:28px 32px;flex:1">
         <div style="flex:1;display:flex;flex-direction:column;gap:16px">
@@ -375,6 +376,7 @@ const API_BASE = window._API_BASE || "";
 
 let currentUser = null, accessToken = null, currentGoalId = null;
 let unsubGoal = null, unsubTasks = null, hitlGoalId = null, hitlChoice = null;
+let _goalStatus = null;
 
 function showScreen(name) {
   document.getElementById('screen-landing').style.display   = name==='landing' ? 'flex' : 'none';
@@ -404,7 +406,7 @@ function signIn() {
   auth.signInWithPopup(p)
     .then(r => {
       accessToken = r.credential.accessToken;
-      sessionStorage.setItem('_gat', accessToken);
+      sessionStorage.setItem('_gat', accessToken); // survive page reload within same tab
       currentUser = r.user;
       onSignedIn(r.user);
     })
@@ -572,9 +574,15 @@ function addBanner(icon,title,desc) {
   document.getElementById('result-banners').appendChild(el);
 }
 function subscribeGoal(goalId) {
+  _goalStatus = null;
+  const dot=document.getElementById('running-dot');
+  if (dot) { dot.classList.add('anim-pulse'); dot.style.background='#34d399'; }
+  const lbl=document.getElementById('running-label');
+  if (lbl) lbl.textContent='Running: ';
   unsubGoal=db.collection("goals").doc(goalId).onSnapshot(snap=>{
     const data=snap.data(); if(!data) return;
     const st=data.status;
+    _goalStatus = st;
     if (st==='done'||st==='completed') {
       showView('done'); setSidebarActive('nl-logs');
       document.getElementById('goal-status').textContent='Completed'; populateDone();
@@ -584,15 +592,23 @@ function subscribeGoal(goalId) {
     } else {
       document.getElementById('hitl-overlay').style.display='none';
       if(st) document.getElementById('goal-status').textContent=st.charAt(0).toUpperCase()+st.slice(1);
+      if (st==='error') {
+        const dot=document.getElementById('running-dot');
+        if (dot) { dot.classList.remove('anim-pulse'); dot.style.background='#ffb4ab'; }
+        const lbl=document.getElementById('running-label');
+        if (lbl) lbl.textContent='Failed: ';
+      }
     }
   });
   unsubTasks=db.collection("goals").doc(goalId).collection("subtasks").onSnapshot(snap=>{
     snap.docChanges().forEach(ch=>{ if(ch.type==='added'||ch.type==='modified') renderTask(ch.doc.id,ch.doc.data()); });
+    if (_goalStatus==='done'||_goalStatus==='completed') populateDone();
   });
 }
 function populateDone() {
   const tl=document.getElementById('done-timeline'), af=document.getElementById('done-artifacts');
-  if (tl.children.length>0) return;
+  if (!document.querySelectorAll('#task-list > div').length) return;
+  tl.innerHTML=''; af.innerHTML='';
   document.querySelectorAll('#task-list > div').forEach(item=>{
     const ps=item.querySelectorAll('p');
     const div=document.createElement('div'); div.className='tl-item';
@@ -686,6 +702,7 @@ function loadPastGoals() {
 }
 
 function openPastGoal(goalId, data) {
+  // Unsubscribe previous if any
   if (unsubGoal) unsubGoal(); if (unsubTasks) unsubTasks();
   document.getElementById('task-list').innerHTML = '';
   document.getElementById('result-banners').innerHTML = '';
