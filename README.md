@@ -9,10 +9,10 @@ Built for the **"Last-Minute Life Saver"** hackathon track. Python, FastAPI, Goo
 ![Google ADK](https://img.shields.io/badge/Google_ADK-2.3.0-4285F4?logo=google&logoColor=white)
 ![Gemini](https://img.shields.io/badge/Gemini-3.5--flash-8E75B2?logo=googlegemini&logoColor=white)
 ![Firestore](https://img.shields.io/badge/Firestore-realtime-FFA000?logo=firebase&logoColor=white)
-![Cloud Run](https://img.shields.io/badge/Cloud_Run-deployed-4285F4?logo=googlecloud&logoColor=white)
+![Cloud Run](https://img.shields.io/badge/Cloud_Run-ready_to_deploy-4285F4?logo=googlecloud&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-58%20passing-brightgreen)
 
-**Live demo:** https://closer-953486236675.us-central1.run.app
+**Live demo:** currently offline. Deploy it yourself to Cloud Run with the steps under [Deployment](#deployment).
 
 ---
 
